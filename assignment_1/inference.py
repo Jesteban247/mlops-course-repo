@@ -7,14 +7,23 @@ import pandas as pd
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
-MODEL_PATH = BASE_DIR / "models" / "penguin_tree.pkl"
+MODELS_DIR = BASE_DIR / "models"
 
 
-def predict_penguin(island, bill_length, bill_depth, flipper_length, body_mass, sex):
+def load_model(model_name: str):
+    model_path = MODELS_DIR / f"{model_name}.pkl"
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model '{model_name}' not found at {model_path}")
+    with model_path.open("rb") as f:
+        return pickle.load(f)
+
+
+def predict_penguin(
+    island, bill_length, bill_depth, flipper_length, body_mass, sex,
+    model_name: str = "penguin_tree",
+):
     """Return the predicted species for one penguin."""
-    with MODEL_PATH.open("rb") as file:
-        model = pickle.load(file)
-
+    model = load_model(model_name)
     penguin = pd.DataFrame([{
         "island": island,
         "bill_length_mm": bill_length,
@@ -34,6 +43,10 @@ def main():
     parser.add_argument("--flipper-length", type=float, default=210.0)
     parser.add_argument("--body-mass", type=float, default=4500.0)
     parser.add_argument("--sex", default="MALE", choices=["MALE", "FEMALE"])
+    parser.add_argument(
+        "--model", default="penguin_tree",
+        help="Nombre del modelo a usar (sin .pkl). Ej: penguin_tree, penguin_xgboost",
+    )
     args = parser.parse_args()
 
     prediction = predict_penguin(
@@ -43,8 +56,10 @@ def main():
         args.flipper_length,
         args.body_mass,
         args.sex,
+        model_name=args.model,
     )
-    print(f"Predicted species: {prediction}")
+    print(f"Predicted species : {prediction}")
+    print(f"Model used        : {args.model}")
 
 
 if __name__ == "__main__":
