@@ -46,3 +46,7 @@ docker ps -a
 
 docker rmi IMAGE_ID
 ```
+
+## Demo
+
+![API demo](files/Demo.gif)
