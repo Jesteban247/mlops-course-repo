@@ -16,9 +16,6 @@ app = FastAPI(title="Penguin Species API")
 # Contenedor mutable para el modelo activo (evita problemas con closures)
 _state = {"active_model": "penguin_tree"}
 
-
-# ── Schemas ──────────────────────────────────────────────────────────────────
-
 class Penguin(BaseModel):
     island: str = "Dream"
     bill_length: float = 45.0
@@ -27,17 +24,12 @@ class Penguin(BaseModel):
     body_mass: float = 4500.0
     sex: Literal["MALE", "FEMALE"] = "MALE"
 
-
 class ModelSelection(BaseModel):
     model_name: str
-
-
-# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.get("/")
 def home():
     return {"message": "Penguin species API is running"}
-
 
 @app.get("/models")
 def list_models():
@@ -47,7 +39,6 @@ def list_models():
         "available_models": available,
         "active_model": _state["active_model"],
     }
-
 
 @app.post("/models/select")
 def select_model(selection: ModelSelection):
@@ -61,7 +52,6 @@ def select_model(selection: ModelSelection):
         )
     _state["active_model"] = selection.model_name
     return {"message": f"Active model set to '{selection.model_name}'"}
-
 
 @app.post("/predict")
 def predict(penguin: Penguin):
