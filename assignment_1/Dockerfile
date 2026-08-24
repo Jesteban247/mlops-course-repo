@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY api.py inference.py train.py ./
+COPY api.py inference.py model_utils.py train.py ./
 COPY models ./models
 
 EXPOSE 8989

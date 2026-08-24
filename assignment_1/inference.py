@@ -5,17 +5,27 @@ import pickle
 import pandas as pd
 
 from pathlib import Path
+from model_utils import XGBoostWrapper
 
 BASE_DIR = Path(__file__).resolve().parent
 MODELS_DIR = BASE_DIR / "models"
+
+
+class ModelUnpickler(pickle.Unpickler):
+    """Load older models that stored the wrapper as a script-local class."""
+
+    def find_class(self, module, name):
+        if module == "__main__" and name == "XGBoostWrapper":
+            return XGBoostWrapper
+        return super().find_class(module, name)
 
 
 def load_model(model_name: str):
     model_path = MODELS_DIR / f"{model_name}.pkl"
     if not model_path.exists():
         raise FileNotFoundError(f"Model '{model_name}' not found at {model_path}")
-    with model_path.open("rb") as f:
-        return pickle.load(f)
+    with model_path.open("rb") as handle:
+        return ModelUnpickler(handle).load()
 
 
 def predict_penguin(
@@ -36,7 +46,7 @@ def predict_penguin(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Predict a penguin species")
+    parser = argparse.ArgumentParser(description="Predict a penguin species.")
     parser.add_argument("--island", default="Dream")
     parser.add_argument("--bill-length", type=float, default=45.0)
     parser.add_argument("--bill-depth", type=float, default=15.0)
@@ -45,7 +55,7 @@ def main():
     parser.add_argument("--sex", default="MALE", choices=["MALE", "FEMALE"])
     parser.add_argument(
         "--model", default="penguin_tree",
-        help="Nombre del modelo a usar (sin .pkl). Ej: penguin_tree, penguin_xgboost",
+        help="Model filename without .pkl, for example penguin_tree or penguin_xgboost.",
     )
     args = parser.parse_args()
 

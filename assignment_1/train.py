@@ -1,5 +1,4 @@
-
-"""Train Decision Tree and XGBoost classifiers for the penguins dataset."""
+"""Train and save the classifiers used by the penguin prediction API."""
 
 import pickle
 import pandas as pd
@@ -15,25 +14,16 @@ from sklearn.preprocessing import LabelEncoder, OneHotEncoder
 from sklearn.tree import DecisionTreeClassifier
 from xgboost import XGBClassifier
 
-
-DATA_PATH = Path("data/penguins_clean.csv")
-MODELS_DIR = Path("models")
+from model_utils import XGBoostWrapper
 
 
-class XGBoostWrapper:
-    """Wraps XGBoost pipeline + LabelEncoder con la misma interfaz que un Pipeline de sklearn."""
-
-    def __init__(self, pipeline, label_encoder):
-        self.pipeline = pipeline
-        self.label_encoder = label_encoder
-
-    def predict(self, X):
-        numeric_preds = self.pipeline.predict(X)
-        return self.label_encoder.inverse_transform(numeric_preds)
+BASE_DIR = Path(__file__).resolve().parent
+DATA_PATH = BASE_DIR / "data" / "penguins_clean.csv"
+MODELS_DIR = BASE_DIR / "models"
 
 
 def build_preprocessing():
-    """Preprocesamiento compartido para ambos modelos."""
+    """Build the preprocessing shared by all classifiers."""
     categorical_features = ["island", "sex"]
     numeric_features = [
         "bill_length_mm", "bill_depth_mm", "flipper_length_mm", "body_mass_g",
@@ -79,7 +69,7 @@ def train_decision_tree(X_train, X_test, y_train, y_test):
 def train_xgboost(X_train, X_test, y_train, y_test):
     print("\n=== XGBoost + GridSearchCV ===")
 
-    # XGBoost requiere labels numéricas
+    # XGBoost requires numeric class labels.
     le = LabelEncoder()
     y_train_enc = le.fit_transform(y_train)
     y_test_enc = le.transform(y_test)
@@ -152,19 +142,18 @@ def main():
     tree = train_decision_tree(X_train, X_test, y_train, y_test)
     with (MODELS_DIR / "penguin_tree.pkl").open("wb") as f:
         pickle.dump(tree, f)
-    print("\nSaved → models/penguin_tree.pkl")
+    print("\nSaved: models/penguin_tree.pkl")
 
     xgb = train_xgboost(X_train, X_test, y_train, y_test)
     with (MODELS_DIR / "penguin_xgboost.pkl").open("wb") as f:
         pickle.dump(xgb, f)
-    print("Saved → models/penguin_xgboost.pkl")
+    print("Saved: models/penguin_xgboost.pkl")
 
     random_forest = train_random_forest(X_train, X_test, y_train, y_test)
     with (MODELS_DIR / "penguin_random_forest.pkl").open("wb") as f:
         pickle.dump(random_forest, f)
-    print("Saved → models/penguin_random_forest.pkl")
+    print("Saved: models/penguin_random_forest.pkl")
 
 
 if __name__ == "__main__":
     main()
-```

@@ -13,8 +13,9 @@ MODELS_DIR = BASE_DIR / "models"
 
 app = FastAPI(title="Penguin Species API")
 
-# Contenedor mutable para el modelo activo (evita problemas con closures)
+# Keep the active model in one place so it can be changed through the API.
 _state = {"active_model": "penguin_tree"}
+
 
 class Penguin(BaseModel):
     island: str = "Dream"
@@ -24,25 +25,29 @@ class Penguin(BaseModel):
     body_mass: float = 4500.0
     sex: Literal["MALE", "FEMALE"] = "MALE"
 
+
 class ModelSelection(BaseModel):
     model_name: str
+
 
 @app.get("/")
 def home():
     return {"message": "Penguin species API is running"}
 
+
 @app.get("/models")
 def list_models():
-    """Lista todos los modelos entrenados disponibles y cuál está activo."""
+    """List available trained models and identify the active model."""
     available = sorted(p.stem for p in MODELS_DIR.glob("*.pkl"))
     return {
         "available_models": available,
         "active_model": _state["active_model"],
     }
 
+
 @app.post("/models/select")
 def select_model(selection: ModelSelection):
-    """Cambia el modelo que se usará para inferencia."""
+    """Select the model used for future predictions."""
     model_path = MODELS_DIR / f"{selection.model_name}.pkl"
     if not model_path.exists():
         available = sorted(p.stem for p in MODELS_DIR.glob("*.pkl"))
@@ -53,9 +58,10 @@ def select_model(selection: ModelSelection):
     _state["active_model"] = selection.model_name
     return {"message": f"Active model set to '{selection.model_name}'"}
 
+
 @app.post("/predict")
 def predict(penguin: Penguin):
-    """Predice la especie de un pingüino usando el modelo activo."""
+    """Predict a penguin species with the active model."""
     try:
         species = predict_penguin(
             penguin.island,
