@@ -1,3 +1,4 @@
+
 """Train Decision Tree and XGBoost classifiers for the penguins dataset."""
 
 import pickle
@@ -5,6 +6,7 @@ import pandas as pd
 
 from pathlib import Path
 from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import train_test_split, GridSearchCV
@@ -107,6 +109,31 @@ def train_xgboost(X_train, X_test, y_train, y_test):
     return XGBoostWrapper(best_pipeline, le)
 
 
+def train_random_forest(X_train, X_test, y_train, y_test):
+    print("\n=== Random Forest ===")
+    pipeline = Pipeline([
+        ("preprocessing", build_preprocessing()),
+        (
+            "classifier",
+            RandomForestClassifier(
+                n_estimators=300,
+                random_state=42,
+                class_weight="balanced",
+                n_jobs=-1,
+            ),
+        ),
+    ])
+
+    pipeline.fit(X_train, y_train)
+
+    preds = pipeline.predict(X_test)
+
+    print(f"Test accuracy: {accuracy_score(y_test, preds):.4f}")
+    print(classification_report(y_test, preds))
+
+    return pipeline
+
+
 def main():
     data = pd.read_csv(DATA_PATH)
     features = [
@@ -132,6 +159,12 @@ def main():
         pickle.dump(xgb, f)
     print("Saved → models/penguin_xgboost.pkl")
 
+    random_forest = train_random_forest(X_train, X_test, y_train, y_test)
+    with (MODELS_DIR / "penguin_random_forest.pkl").open("wb") as f:
+        pickle.dump(random_forest, f)
+    print("Saved → models/penguin_random_forest.pkl")
+
 
 if __name__ == "__main__":
     main()
+```
