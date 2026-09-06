@@ -54,15 +54,41 @@ git remote -v
 
 Do not commit passwords, tokens, private keys, or other secrets.
 
-## Conda
+## Python environment with uv
 
-Install Miniconda:
+Install `uv`:
 
 ```bash
-curl -O https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-bash Miniconda3-latest-Linux-x86_64.sh
-source ~/.bashrc
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source "$HOME/.local/bin/env"
 ```
+
+For a new assignment, run this once:
+
+```bash
+cd assignment_N
+uv init --bare
+uv python pin 3.14
+uv add PACKAGE_NAME
+uv sync
+```
+
+Replace `assignment_N` with the assignment directory and `PACKAGE_NAME` with each dependency it needs. For an assignment that already has `pyproject.toml` and `uv.lock`, setup is simply:
+
+```bash
+cd assignment_N
+uv sync
+```
+
+`uv sync` creates `.venv` automatically. Run Python files from the assignment directory with `uv run`:
+
+```bash
+uv run train.py
+uv run inference.py
+uv run uvicorn api:app --host 0.0.0.0 --port 8989
+```
+
+Use `uv add PACKAGE_NAME` or `uv remove PACKAGE_NAME` when changing dependencies. These commands update `pyproject.toml` and `uv.lock`.
 
 ## Docker
 
