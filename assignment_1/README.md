@@ -1,35 +1,43 @@
 # Assignment 1
 
+Run all commands in this README from the `assignment_1` directory.
+
 ## Data
 
 ```bash
 curl -L --retry 3 -o data/penguins.csv https://cdn.jsdelivr.net/gh/mwaskom/seaborn-data@master/penguins.csv
 ```
 
-## Conda
+## Environment
+
+If this assignment already contains `pyproject.toml` and `uv.lock`, run:
 
 ```bash
-conda env list
-conda create -n penguins python=3.14 -y
-conda activate penguins
-pip install -r requirements.txt
-pip freeze > requirements.txt
-
-conda deactivate
-conda env remove --name penguins
+uv sync
 ```
+
+To create the project files from an empty Assignment 1 folder, run once:
+
+```bash
+uv init --bare --name penguin-api
+uv python pin 3.14
+uv add PACKAGE_NAME
+uv sync
+```
+
+`uv sync` creates `.venv` automatically. Do not use `pip install` for this project.
 
 ## Python
 
 ```bash
-python train.py
-python inference.py
+uv run train.py
+uv run inference.py
 ```
 
 ## API
 
 ```bash
-uvicorn api:app --host 0.0.0.0 --port 8989
+uv run uvicorn api:app --host 0.0.0.0 --port 8989
 ```
 
 ```text
