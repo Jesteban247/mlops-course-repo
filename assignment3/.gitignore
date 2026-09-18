@@ -1,0 +1,7 @@
+.env
+.venv/
+logs/
+data/*.csv
+data/processed/
+models/*.pkl
+models/*.json
