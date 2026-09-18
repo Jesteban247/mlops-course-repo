@@ -1,0 +1,8 @@
+FROM python:3.13-slim
+WORKDIR /app
+COPY --from=ghcr.io/astral-sh/uv:0.12.10 /uv /uvx /bin/
+COPY api/pyproject.toml api/uv.lock ./
+RUN uv sync --locked --no-dev --no-install-project --no-cache
+COPY api/api.py api/inference.py ./
+EXPOSE 8000
+CMD ["uv", "run", "--no-dev", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
