@@ -1,0 +1,14 @@
+.env
+.env.*
+.venv/
+.git/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+logs/
+data/
+models/
+tests/
+dags/
+config/
+notebooks/

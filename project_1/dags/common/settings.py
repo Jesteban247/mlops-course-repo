@@ -1,0 +1,7 @@
+"""Collection settings for Project 1."""
+
+GROUP_NUMBER = 4
+BATCH_NUMBERS = list(range(1, 11))
+UNIQUE_ROWS_PER_BATCH = 58_000
+POLL_INTERVAL_SECONDS = 3
+ROTATION_SECONDS = 5 * 60 + 5
