@@ -1,0 +1,204 @@
+volumes:
+  pgdata:
+  dataset-pgdata:
+  storage-data:
+  python-venv:
+  uv-cache:
+
+services:
+  python-env:
+    image: ghcr.io/astral-sh/uv:0.12.19-python3.11-trixie-slim
+    container_name: assignment4-python-env
+    entrypoint: []
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:ro
+      - python-venv:/python-env
+      - uv-cache:/root/.cache/uv
+    environment:
+      UV_PROJECT_ENVIRONMENT: /python-env
+    command: ["uv", "sync", "--project", "/workspace", "--locked", "--no-dev", "--all-groups"]
+    restart: "no"
+
+  postgres:
+    image: postgres:15
+    container_name: mlflow-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mlflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mlflowpass}
+      POSTGRES_DB: ${POSTGRES_DB:-mlflow}
+      PGPORT: 5432
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${PGPORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mlflow} -d ${POSTGRES_DB:-mlflow} -p 5432"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  dataset-postgres:
+    image: postgres:15
+    container_name: assignment4-dataset-postgres
+    environment:
+      POSTGRES_USER: ${DATASET_POSTGRES_USER:-dataset_user}
+      POSTGRES_PASSWORD: ${DATASET_POSTGRES_PASSWORD:-dataset_pass}
+      POSTGRES_DB: ${DATASET_POSTGRES_DB:-heart_disease}
+    volumes:
+      - dataset-pgdata:/var/lib/postgresql/data
+    ports:
+      - "${DATASET_POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATASET_POSTGRES_USER:-dataset_user} -d ${DATASET_POSTGRES_DB:-heart_disease}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  storage:
+    image: docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z
+    container_name: mlflow-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-s3admin}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-s3admin123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - storage-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "silo", "healthcheck", "ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  mlflow:
+    image: ghcr.io/astral-sh/uv:0.12.19-python3.11-trixie-slim
+    entrypoint: []
+    user: "1000:1000"
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:ro
+      - python-venv:/python-env:ro
+    container_name: mlflow-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+      python-env:
+        condition: service_completed_successfully
+    environment:
+      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI:-postgresql+psycopg2://mlflow:mlflowpass@postgres:5432/mlflow}
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL:-http://storage:9000}
+      MLFLOW_ARTIFACTS_DESTINATION: ${MLFLOW_ARTIFACTS_DESTINATION:-s3://mlflow-artifacts}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-s3admin}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-s3admin123}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      MLFLOW_S3_IGNORE_TLS: "true"
+      MLFLOW_HOST: ${MLFLOW_HOST:-0.0.0.0}
+      MLFLOW_PORT: ${MLFLOW_PORT:-5000}
+      UV_PROJECT_ENVIRONMENT: /python-env
+      UV_CACHE_DIR: /tmp/uv-cache
+    command:
+      - uv
+      - run
+      - --project
+      - /workspace
+      - --locked
+      - --no-sync
+      - mlflow
+      - server
+      - --backend-store-uri
+      - ${MLFLOW_BACKEND_STORE_URI:-postgresql+psycopg2://mlflow:mlflowpass@postgres:5432/mlflow}
+      - --artifacts-destination
+      - ${MLFLOW_ARTIFACTS_DESTINATION:-s3://mlflow-artifacts}
+      - --serve-artifacts
+      - --host
+      - ${MLFLOW_HOST:-0.0.0.0}
+      - --port
+      - ${MLFLOW_PORT:-5000}
+      - --allowed-hosts
+      - mlflow:*,localhost:*,127.0.0.1:*,host.docker.internal:*
+    ports:
+      - "${MLFLOW_PORT:-5000}:${MLFLOW_PORT:-5000}"
+    healthcheck:
+      test: ["CMD", "uv", "run", "--project", "/workspace", "--locked", "--no-sync", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${MLFLOW_PORT:-5000}/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  jupyter:
+    image: ghcr.io/astral-sh/uv:0.12.19-python3.11-trixie-slim
+    container_name: mlflow-jupyter
+    entrypoint: []
+    user: "${LOCAL_UID:-1001}:${LOCAL_GID:-1001}"
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - python-venv:/python-env:ro
+    ports:
+      - "8888:8888"
+    environment:
+      HOME: /tmp
+      USER: ${LOCAL_USER:-estudiante}
+      LOGNAME: ${LOCAL_USER:-estudiante}
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN:-mlops2026}
+      DATASET_POSTGRES_HOST: dataset-postgres
+      DATASET_POSTGRES_PORT: "5432"
+      DATASET_POSTGRES_DB: ${DATASET_POSTGRES_DB:-heart_disease}
+      DATASET_POSTGRES_USER: ${DATASET_POSTGRES_USER:-dataset_user}
+      DATASET_POSTGRES_PASSWORD: ${DATASET_POSTGRES_PASSWORD:-dataset_pass}
+      MLFLOW_TRACKING_URI: http://mlflow:${MLFLOW_PORT:-5000}
+      MLFLOW_S3_ENDPOINT_URL: http://storage:9000
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-s3admin}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-s3admin123}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-mlflow-artifacts}
+      UV_PROJECT_ENVIRONMENT: /python-env
+      UV_CACHE_DIR: /tmp/uv-cache
+    command: ["uv", "run", "--project", "/workspace", "--locked", "--no-sync", "jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--ServerApp.root_dir=/workspace/notebooks"]
+    restart: unless-stopped
+    depends_on:
+      dataset-postgres:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+      python-env:
+        condition: service_completed_successfully
+
+  inference-api:
+    image: ghcr.io/astral-sh/uv:0.12.19-python3.11-trixie-slim
+    container_name: heart-disease-api
+    entrypoint: []
+    user: "1000:1000"
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:ro
+      - python-venv:/python-env:ro
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:${MLFLOW_PORT:-5000}
+      MLFLOW_MODEL_URI: models:/HeartDiseaseClassifier@champion
+      MLFLOW_S3_ENDPOINT_URL: http://storage:9000
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-s3admin}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-s3admin123}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      UV_PROJECT_ENVIRONMENT: /python-env
+      UV_CACHE_DIR: /tmp/uv-cache
+    ports:
+      - "8000:8000"
+    command: ["uv", "run", "--project", "/workspace", "--locked", "--no-sync", "uvicorn", "main:app", "--app-dir", "/workspace/api", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+    depends_on:
+      mlflow:
+        condition: service_healthy
+      python-env:
+        condition: service_completed_successfully
+
+networks:
+  default:
+    name: mlflow-network
