@@ -127,7 +127,7 @@ python run.py smoke
 
 ## Part 7 — Measure one replica (Mac)
 
-Each command creates 10 users per second until the requested total, warms up for 15 seconds, then measures for 120 seconds and stops automatically. Users repeatedly send predictions, waiting 0.5–1.5 seconds between requests.
+Each command creates users at the specified `--spawn-rate` until the requested total, warms up for 15 seconds, then measures for 120 seconds and stops automatically. Users repeatedly send predictions, waiting 0.5–1.5 seconds between requests.
 
 Results are saved automatically in `locust/results/`, with replica count, user count and a timestamp: `*_summary.json`, `*_window.json` and Locust CSV files. Acceptance: failures < 1% and p95 < 500 ms during the measured window; the expected replicas must respond using the same model.
 
@@ -159,13 +159,52 @@ python run.py load --replicas 3 --users 50 --spawn-rate 5
 python run.py load --replicas 3 --users 100 --spawn-rate 5
 ```
 
-## Part 9 — Video demo
+## Part 9 — Observed experiments
 
-[![Video demo: MLflow heart disease experiment](files/Demo.png)](https://drive.google.com/file/d/1Rf4WNv328yIbfRgqGWJFz16FwPt615Pf/view?usp=share_link)
+Results: [experiment_results/](experiment_results/). Click a user count in the table to open its JSON summary.
+
+API and Nginx ran on the VM; Locust ran on the Mac. Each API replica was limited to 1 CPU and 1 GB. All runs used model version 1, a 15-second warmup after all users appeared, a 120-second measurement window, a 0.5–1.5-second wait between requests and a 10-second timeout.
+
+A load passes if failures stay below 1% and p95 below 500 ms. One replica handled 100 users without errors, and three handled 200, but their responses were too slow to pass. Only the 10-user test passed both limits.
+
+The table shows the 120-second measurement results.
+
+| Replicas | Users / JSON | Spawn/s | Requests | RPS | Successful RPS | Failures % | p95 (ms) | Meets criterion |
+|---:|---:|---:|---:|---:|---:|---:|---:|:---:|
+| 1 | [10](experiment_results/rep1_u10_20261014T044548546305Z_summary.json) | 5 | 1,076 | 8.97 | 8.97 | 0.00 | 290 | Yes |
+| 1 | [25](experiment_results/rep1_u25_20261014T044826336150Z_summary.json) | 1 | 1,760 | 14.67 | 14.67 | 0.00 | 1,500 | No |
+| 1 | [50](experiment_results/rep1_u50_20261014T045138305275Z_summary.json) | 1 | 1,806 | 15.05 | 15.05 | 0.00 | 3,100 | No |
+| 1 | [100](experiment_results/rep1_u100_20261014T045600899308Z_summary.json) | 2 | 1,681 | 14.01 | 14.01 | 0.00 | 7,100 | No |
+| 1 | [150](experiment_results/rep1_u150_20261014T050333621945Z_summary.json) | 5 | 1,783 | 14.86 | 14.48 | 2.52 | 9,900 | No |
+| 1 | [200](experiment_results/rep1_u200_20261014T045950083386Z_summary.json) | 5 | 2,179 | 18.16 | 0.00 | 100.00 | 10,000 | No |
+| 3 | [100](experiment_results/rep3_u100_20261014T050849734735Z_summary.json) | 5 | 3,499 | 29.16 | 29.16 | 0.00 | 3,900 | No |
+| 3 | [200](experiment_results/rep3_u200_20261014T051134144968Z_summary.json) | 5 | 3,527 | 29.39 | 29.39 | 0.00 | 7,500 | No |
+
+One replica had no errors up to 100 tested users. Its highest successful throughput was 15.05 RPS at 50 users. At 150 users, 45 requests timed out; at 200, all measured requests timed out.
+
+Three replicas handled 200 users at 29.39 RPS without errors, but p95 reached 7.5 seconds. Nginx spread requests almost equally across the three replicas.
+
+Spawn rates differed, so the comparison is approximate. CPU and memory values in the JSON summaries belong to the Mac running Locust.
+
+## Part 10 — Video demo
+
+[![Video demo: MLflow heart disease experiment](files/Demo.png)](https://drive.google.com/file/d/1m2TQQkMNKHAQOX5ihGz_gYxu61uzdCfe/view?usp=share_link)
 
 Click the image to watch the video.
 
-## Part 10 — Delete everything, including models and metadata (VM)
+## Part 11 — Workshop answers
+
+1. **One replica:** 100 users completed without errors at **14.01 RPS**, but p95 was **7.1 seconds**. Only **10 tested users at 8.97 RPS** met the 500 ms target. The exact maximum needs more tests between 10 and 25 users.
+
+2. **Three replicas:** 200 users completed without errors at **29.39 RPS**, but p95 was **7.5 seconds**. Neither tested load met the 500 ms target, so its sustainable maximum is still unknown.
+
+3. **Improvement:** the highest tested load without errors doubled from 100 to 200 users. At 100 users, RPS increased by **108.2% (2.08×)**, below 3×. This shows better throughput, but not capacity within the latency target. Spawn rates differed.
+
+4. **Bottleneck:** API processing appears to be the main limit: RPS stopped growing while response times increased and timeouts appeared. CPU is a possible cause. The Mac showed no CPU saturation warnings; its total CPU peak was **48.54%**. The exact resource causing the slowdown is still unknown.
+
+5. **Other services:** Nginx, shared VM resources and the VPN could also limit performance. MLflow, PostgreSQL and storage are used to load the model, not for every prediction, but still consume VM resources. These results do not show which service caused the slowdown.
+
+## Part 12 — Delete everything
 
 ```bash
 docker compose --profile '*' down --volumes --remove-orphans
