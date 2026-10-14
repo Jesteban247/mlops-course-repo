@@ -1,0 +1,172 @@
+name: assignment5
+
+x-api: &api
+  image: ${API_IMAGE:?Set API_IMAGE in .env}
+  env_file:
+    - path: ./deployment/model.env
+      required: false
+  environment:
+    MLFLOW_TRACKING_URI: http://mlflow:5000
+    OMP_NUM_THREADS: "1"
+    OPENBLAS_NUM_THREADS: "1"
+    MKL_NUM_THREADS: "1"
+  depends_on:
+    mlflow:
+      condition: service_healthy
+  healthcheck:
+    test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+    interval: 5s
+    timeout: 3s
+    retries: 30
+    start_period: 30s
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:15.14-bookworm
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mlflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-assignment5-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-mlflow}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  storage:
+    image: docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-assignment5-storage}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-assignment5-storage-password}
+    volumes:
+      - storage-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: [CMD, silo, healthcheck, ready]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  mlflow:
+    image: assignment5-mlflow:1.0.0
+    build:
+      context: .
+      dockerfile: infrastructure/Dockerfile
+      args:
+        DEPENDENCY_GROUP: server
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://storage:9000
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-assignment5-storage}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-assignment5-storage-password}
+      AWS_DEFAULT_REGION: us-east-1
+    command:
+      - mlflow
+      - server
+      - --backend-store-uri
+      - postgresql+psycopg2://${POSTGRES_USER:-mlflow}:${POSTGRES_PASSWORD:-assignment5-postgres}@postgres:5432/${POSTGRES_DB:-mlflow}
+      - --artifacts-destination
+      - s3://${S3_BUCKET:-mlflow-artifacts}
+      - --serve-artifacts
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+      - --allowed-hosts
+      - "mlflow:*,localhost:*,127.0.0.1:*,${VM_HOST:-10.43.97.96}:*"
+    ports:
+      - "${MLFLOW_PORT:-5000}:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  jupyter:
+    image: assignment5-jupyter:1.0.0
+    build:
+      context: .
+      dockerfile: infrastructure/Dockerfile
+      args:
+        DEPENDENCY_GROUP: notebook
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_S3_ENDPOINT_URL: http://storage:9000
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-assignment5-storage}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-assignment5-storage-password}
+      AWS_DEFAULT_REGION: us-east-1
+      S3_BUCKET: ${S3_BUCKET:-mlflow-artifacts}
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN:-assignment5-local}
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    volumes:
+      - ./notebooks:/workspace/notebooks
+      - ./deployment:/workspace/output
+    command: [jupyter, lab, --ip=0.0.0.0, --port=8888, --no-browser, --allow-root, --ServerApp.root_dir=/workspace/notebooks]
+    ports:
+      - "${JUPYTER_PORT:-8888}:8888"
+    depends_on:
+      mlflow:
+        condition: service_healthy
+
+  api-test:
+    <<: *api
+    image: assignment5-api:local
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_MODEL_URI: models:/HeartDiseaseClassifier@champion
+      PRELOAD_MODEL: "false"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/openapi.json')"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    ports:
+      - "${TEST_API_PORT:-8001}:8000"
+
+  api:
+    <<: *api
+    profiles: [load]
+    cpus: "1.0"
+    mem_limit: 1g
+    memswap_limit: 1g
+
+  nginx:
+    image: nginx:1.28.0-alpine
+    profiles: [load]
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./deployment/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  storage-data:
+
+networks:
+  default:
+    name: assignment5-shared
