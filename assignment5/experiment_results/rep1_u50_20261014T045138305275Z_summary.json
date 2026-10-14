@@ -1,0 +1,34 @@
+{
+  "host": "http://10.43.97.96:8000",
+  "replicas": 1,
+  "observed_replicas": 1,
+  "topology_verified": true,
+  "users": 50,
+  "spawn_rate": 1.0,
+  "warmup_seconds": 15.0,
+  "measurement_seconds": 120.003,
+  "wait_min_seconds": 0.5,
+  "wait_max_seconds": 1.5,
+  "timeout_seconds": 10.0,
+  "requests": 1806,
+  "failures": 0,
+  "failure_percent": 0.0,
+  "rps": 15.049648282445713,
+  "successful_rps": 15.049648282445713,
+  "p95_ms": 3100.0,
+  "failure_limit_percent": 1.0,
+  "p95_limit_ms": 500.0,
+  "criterion_passed": false,
+  "model_responses": {
+    "models:/HeartDiseaseClassifier/1": 1806
+  },
+  "instance_responses": {
+    "d88cba30aa52": 1806
+  },
+  "generator_cpu_average_percent": 14.905624999999999,
+  "generator_cpu_peak_percent": 38.25000000000001,
+  "generator_busiest_core_peak_percent": 56.0,
+  "generator_process_cpu_peak_percent": 6.8,
+  "generator_process_rss_peak_bytes": 69255168,
+  "generator_cpu_warning": false
+}
