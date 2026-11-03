@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: diabetes-postgres-data, namespace: mlops-project}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests: {storage: 3Gi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: diabetes-postgres, namespace: mlops-project}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: diabetes-postgres}
+  template:
+    metadata:
+      labels: {app: diabetes-postgres}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: nbam19}
+      containers:
+        - name: postgres
+          image: postgres:16.6
+          ports: [{containerPort: 5432}]
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef: {name: stack-secrets, key: DIABETES_DB_USER}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: stack-secrets, key: DIABETES_DB_PASSWORD}
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef: {name: stack-secrets, key: DIABETES_DB_NAME}
+            - name: PGDATA
+              valueFrom: {configMapKeyRef: {name: project-settings, key: POSTGRES_PGDATA}}
+          volumeMounts:
+            - {name: pgdata, mountPath: /var/lib/postgresql/data}
+          readinessProbe:
+            exec:
+              command: [sh, -c, 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: [sh, -c, 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 100m, memory: 192Mi}
+            limits: {cpu: "1", memory: 768Mi}
+      volumes:
+        - name: pgdata
+          persistentVolumeClaim: {claimName: diabetes-postgres-data}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: diabetes-postgres, namespace: mlops-project}
+spec:
+  selector: {app: diabetes-postgres}
+  ports: [{name: postgres, port: 5432, targetPort: 5432}]

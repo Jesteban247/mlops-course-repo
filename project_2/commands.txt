@@ -1,0 +1,504 @@
+# MLOps Project 2 — Rocky Linux / K3s
+# Run in order and stop if a command fails | Both machines
+
+# -----------------------------------------------------------------------------
+# 1. Project and credentials — NBAM07
+
+# Open the project and configure .env | NBAM07
+cd /home/estudiante/mlops-course-repo/project_2
+test -f .env || cp .env.example .env
+chmod 600 .env
+vi .env
+
+# Use unquoted shell-safe values; database credentials use letters, numbers, underscores or hyphens | NBAM07
+
+# -----------------------------------------------------------------------------
+# 2. Network and disk — NBAM07
+
+# Inspect this VM | NBAM07
+ip -4 addr
+ip -4 route
+df -h /var
+
+# Set the cluster networks; check they do not overlap the VM network | NBAM07
+POD_CIDR="10.42.0.0/16"
+SERVICE_CIDR="10.44.0.0/16"
+SERVICE_DNS="10.44.0.10"
+
+# -----------------------------------------------------------------------------
+# 3. K3s server — NBAM07
+
+# Install the server | NBAM07
+set -o pipefail
+curl -sfL https://get.k3s.io | sudo env \
+  INSTALL_K3S_VERSION='v1.36.5+k3s1' \
+  INSTALL_K3S_EXEC="server --cluster-cidr=$POD_CIDR --service-cidr=$SERVICE_CIDR --cluster-dns=$SERVICE_DNS" \
+  sh -
+
+# Configure kubectl | NBAM07
+mkdir -p "$HOME/.kube"
+sudo cp /etc/rancher/k3s/k3s.yaml "$HOME/.kube/config"
+sudo chown "$(id -u):$(id -g)" "$HOME/.kube/config"
+chmod 600 "$HOME/.kube/config"
+export KUBECONFIG="$HOME/.kube/config"
+grep -qxF 'export KUBECONFIG="$HOME/.kube/config"' "$HOME/.bashrc" || \
+  echo 'export KUBECONFIG="$HOME/.kube/config"' >> "$HOME/.bashrc"
+
+# Check the server | NBAM07
+kubectl wait --for=condition=Ready nodes --all --timeout=5m
+kubectl get nodes -o wide
+kubectl get storageclass
+
+# -----------------------------------------------------------------------------
+# 4. Cluster networking and shared files
+
+# 4.1 Server firewall and token | NBAM07
+POD_CIDR="10.42.0.0/16"
+SERVICE_CIDR="10.44.0.0/16"
+sudo systemctl enable --now firewalld
+ZONE="$(sudo firewall-cmd --get-zone-of-interface=ens192)"
+[ "$ZONE" != "no zone" ] || ZONE="$(sudo firewall-cmd --get-default-zone)"
+sudo firewall-cmd --permanent --zone=trusted --add-source="$POD_CIDR"
+sudo firewall-cmd --permanent --zone=trusted --add-source="$SERVICE_CIDR"
+for port in 6443/tcp 8472/udp 10250/tcp; do
+  sudo firewall-cmd --permanent --zone="$ZONE" --add-rich-rule="rule family=\"ipv4\" source address=\"10.43.97.108/32\" port port=\"${port%/*}\" protocol=\"${port#*/}\" accept"
+done
+sudo firewall-cmd --reload
+
+# Save the networks and display the private join token | NBAM07
+mkdir -p "$HOME/.local/state/project_2"
+printf '%s\n%s\n' '10.42.0.0/16' '10.44.0.0/16' > "$HOME/.local/state/project_2/firewall-sources"
+sudo cat /var/lib/rancher/k3s/server/node-token
+
+# 4.2 Worker firewall | NBAM19
+sudo systemctl enable --now firewalld
+ZONE="$(sudo firewall-cmd --get-zone-of-interface=ens192)"
+[ "$ZONE" != "no zone" ] || ZONE="$(sudo firewall-cmd --get-default-zone)"
+sudo firewall-cmd --permanent --zone=trusted --add-source=10.42.0.0/16
+sudo firewall-cmd --permanent --zone=trusted --add-source=10.44.0.0/16
+for port in 8472/udp 10250/tcp; do
+  sudo firewall-cmd --permanent --zone="$ZONE" --add-rich-rule="rule family=\"ipv4\" source address=\"10.43.97.96/32\" port port=\"${port%/*}\" protocol=\"${port#*/}\" accept"
+done
+sudo firewall-cmd --reload
+
+# 4.3 Join the worker | NBAM19
+timeout 5 bash -c '</dev/tcp/10.43.97.96/6443' && echo 'Server reachable'
+read -rs -p 'Paste K3s join token: ' JOIN_TOKEN; echo
+set -o pipefail
+curl -sfL https://get.k3s.io | sudo env \
+  INSTALL_K3S_VERSION='v1.36.5+k3s1' \
+  K3S_URL='https://10.43.97.96:6443' K3S_TOKEN="$JOIN_TOKEN" sh -
+unset JOIN_TOKEN
+sudo systemctl status k3s-agent --no-pager
+
+# 4.4 Check both nodes | NBAM07
+kubectl get nodes -o wide
+
+# 4.5 Export project folders using NFS | NBAM07
+rpm -q nfs-utils >/dev/null 2>&1 || sudo dnf install -y nfs-utils
+rpm -q acl >/dev/null 2>&1 || sudo dnf install -y acl
+cd /home/estudiante/mlops-course-repo/project_2
+
+# Prepare file access | NBAM07
+PROJECT_UID="$(id -u)"
+PROJECT_GID="$(id -g)"
+sudo setfacl -R -m "u:${PROJECT_UID}:rwX" notebooks data src sql
+
+# Allow SELinux to export these folders if the server policy requires it | NBAM07
+if [ "$(getenforce)" != Disabled ]; then
+  NFS_SELINUX="$(getsebool nfs_export_all_rw | awk '{print $3}')"
+  if [ "$NFS_SELINUX" = off ]; then
+    mkdir -p "$HOME/.local/state/project_2"
+    echo off > "$HOME/.local/state/project_2/nfs-export-selinux"
+    sudo setsebool -P nfs_export_all_rw on
+  fi
+fi
+
+# Export notebooks, data, source and SQL | NBAM07
+PROJECT_UID="$(id -u)"
+PROJECT_GID="$(id -g)"
+for folder in notebooks data src sql; do
+  printf '%s 10.43.97.108(rw,sync,all_squash,anonuid=%s,anongid=%s,no_subtree_check)\n' \
+    "/home/estudiante/mlops-course-repo/project_2/$folder" "$PROJECT_UID" "$PROJECT_GID"
+done | sudo tee /etc/exports.d/project2.exports >/dev/null
+sudo systemctl enable --now nfs-server
+sudo exportfs -ra
+
+# Allow NFS from NBAM19 | NBAM07
+ZONE="$(sudo firewall-cmd --get-zone-of-interface=ens192)"
+[ "$ZONE" != "no zone" ] || ZONE="$(sudo firewall-cmd --get-default-zone)"
+sudo firewall-cmd --permanent --zone="$ZONE" \
+  --add-rich-rule='rule family="ipv4" source address="10.43.97.108/32" port port="2049" protocol="tcp" accept'
+sudo firewall-cmd --reload
+sudo exportfs -v
+
+# 4.6 Install and test the NFS client | NBAM19
+rpm -q nfs-utils >/dev/null 2>&1 || sudo dnf install -y nfs-utils
+if [ "$(getenforce)" != Disabled ]; then
+  NFS_SELINUX="$(getsebool virt_use_nfs | awk '{print $3}')"
+  if [ "$NFS_SELINUX" = off ]; then
+    mkdir -p "$HOME/.local/state/project_2"
+    echo off > "$HOME/.local/state/project_2/nfs-client-selinux"
+    sudo setsebool -P virt_use_nfs on
+  fi
+fi
+
+# Check the connection and mount | NBAM19
+timeout 5 bash -c '</dev/tcp/10.43.97.96/2049' && echo 'NFS server reachable'
+sudo mkdir -p /mnt/project2-nfs-check
+sudo mount -t nfs -o vers=4.2 10.43.97.96:/home/estudiante/mlops-course-repo/project_2/notebooks /mnt/project2-nfs-check
+ls /mnt/project2-nfs-check
+sudo umount /mnt/project2-nfs-check
+sudo rmdir /mnt/project2-nfs-check
+
+# 4.7 Return to the project | NBAM07
+cd /home/estudiante/mlops-course-repo/project_2
+
+# -----------------------------------------------------------------------------
+# 5. Helm 3.19.0 — NBAM07
+
+# Download and install | NBAM07
+mkdir -p /tmp/project_2-helm
+curl -fL --retry 3 https://get.helm.sh/helm-v3.19.0-linux-amd64.tar.gz \
+  -o /tmp/project_2-helm/helm.tar.gz
+tar -xzf /tmp/project_2-helm/helm.tar.gz -C /tmp/project_2-helm
+sudo install -m 755 /tmp/project_2-helm/linux-amd64/helm /usr/local/bin/helm
+helm version
+
+# -----------------------------------------------------------------------------
+# 6. Namespace and credentials — NBAM07
+
+# Create the namespace | NBAM07
+kubectl create namespace mlops-project --dry-run=client -o yaml | kubectl apply -f -
+
+# Create shared non-secret settings | NBAM07
+kubectl apply -f k8s/config/configmap.yaml
+
+# Validate .env and create the Secret | NBAM07
+MISSING_KEYS=0
+for key in JUPYTER_TOKEN MINIO_ROOT_USER MINIO_ROOT_PASSWORD MLFLOW_DB_USER MLFLOW_DB_PASSWORD MLFLOW_DB_NAME AIRFLOW_USERNAME AIRFLOW_PASSWORD GRAFANA_USERNAME GRAFANA_PASSWORD DIABETES_DB_USER DIABETES_DB_PASSWORD DIABETES_DB_NAME; do
+  grep -q "^${key}=." .env || { echo "Missing or empty $key in .env"; MISSING_KEYS=1; }
+done
+if [ "$MISSING_KEYS" -eq 0 ]; then
+  kubectl create secret generic stack-secrets -n mlops-project \
+    --from-env-file=.env --dry-run=client -o yaml | kubectl apply -f -
+else
+  echo "Fix .env before continuing."
+  false
+fi
+
+# -----------------------------------------------------------------------------
+# 7. Publish project images
+
+# Images are already published; rebuild only when needed and use new tags for changes | NBAM07
+
+# Sign in to Docker Hub | NBAM07
+docker login
+
+# Build and publish the API image | NBAM07
+docker build -f api/Dockerfile -t jesteban247/diabetes-api:20261102-v3 . && \
+  docker push jesteban247/diabetes-api:20261102-v3
+
+# Remove the Docker copy and unused build cache from all projects | NBAM07
+docker image rm jesteban247/diabetes-api:20261102-v3
+docker builder prune -a
+df -h /var
+
+# Build and publish the Streamlit image | NBAM07
+docker build -f streamlit/Dockerfile -t jesteban247/diabetes-ui:20261102-v1 . && \
+  docker push jesteban247/diabetes-ui:20261102-v1
+
+# Remove the Docker copy and unused build cache from all projects | NBAM07
+docker image rm jesteban247/diabetes-ui:20261102-v1
+docker builder prune -a
+df -h /var
+
+# Build and publish the Airflow image | NBAM07
+docker build -f k8s/airflow/Dockerfile -t jesteban247/diabetes-airflow:20261102-v1 . && \
+  docker push jesteban247/diabetes-airflow:20261102-v1
+
+# Remove the Docker copy and unused build cache from all projects | NBAM07
+docker image rm jesteban247/diabetes-airflow:20261102-v1
+docker builder prune -a
+df -h /var
+
+# -----------------------------------------------------------------------------
+# 8. Airflow — NBAM07
+
+# Add the Helm repository | NBAM07
+helm repo add --force-update apache-airflow https://airflow.apache.org
+helm repo update
+
+# Install with the published image and .env credentials | NBAM07
+(
+  set -a
+  . ./.env
+  set +a
+  helm upgrade --install airflow apache-airflow/airflow \
+    --version 1.22.0 \
+    --namespace mlops-project \
+    -f k8s/airflow/values.yaml \
+    --set-string defaultAirflowRepository=jesteban247/diabetes-airflow \
+    --set-string defaultAirflowTag=20261102-v1 \
+    --set-string images.airflow.pullPolicy=IfNotPresent \
+    --set-string createUserJob.defaultUser.username="$AIRFLOW_USERNAME" \
+    --set-string createUserJob.defaultUser.password="$AIRFLOW_PASSWORD" \
+    --set-string createUserJob.defaultUser.role=Admin \
+    --set-string createUserJob.defaultUser.email=admin@example.com \
+    --set-string createUserJob.defaultUser.firstName=Airflow \
+    --set-string createUserJob.defaultUser.lastName=Admin \
+    --timeout 15m
+)
+
+# Check Airflow; the migration hook requires omitting Helm --wait above | NBAM07
+kubectl rollout status statefulset/airflow-scheduler -n mlops-project --timeout=15m
+kubectl rollout status deployment/airflow-dag-processor -n mlops-project --timeout=15m
+kubectl rollout status deployment/airflow-api-server -n mlops-project --timeout=15m
+kubectl get pods -n mlops-project
+
+# -----------------------------------------------------------------------------
+# 9. MinIO — NBAM07
+
+# Deploy storage on NBAM19 | NBAM07
+kubectl apply -f k8s/minio/minio.yaml
+kubectl rollout status deployment/minio -n mlops-project --timeout=5m
+
+# -----------------------------------------------------------------------------
+# 10. MLflow database — NBAM07
+
+# Deploy PostgreSQL and create its connection Secret | NBAM07
+kubectl apply -f k8s/mlflow/postgres.yaml
+kubectl rollout status deployment/mlflow-postgres -n mlops-project --timeout=5m
+(
+  set -a
+  . ./.env
+  set +a
+  MLFLOW_DB_URI="postgresql://${MLFLOW_DB_USER}:${MLFLOW_DB_PASSWORD}@mlflow-postgres.mlops-project.svc.cluster.local:5432/${MLFLOW_DB_NAME}"
+  kubectl create secret generic mlflow-db-uri -n mlops-project \
+    --from-literal=uri="$MLFLOW_DB_URI" --dry-run=client -o yaml | kubectl apply -f -
+)
+
+# -----------------------------------------------------------------------------
+# 11. MLflow — NBAM07
+
+# If the VM IP changes, update allowed_hosts in k8s/mlflow/mlflow.yaml first | NBAM07
+kubectl get secret mlflow-db-uri -n mlops-project && \
+helm upgrade --install mlflow oci://ghcr.io/mlflow/charts/mlflow \
+  --version 3.17.2 -n mlops-project \
+  -f k8s/mlflow/mlflow.yaml --wait --timeout 15m
+kubectl rollout status deployment/mlflow-mlflow -n mlops-project --timeout=5m
+
+# -----------------------------------------------------------------------------
+# 12. Jupyter — NBAM07
+
+# Deploy Jupyter on NBAM19 | NBAM07
+cd /home/estudiante/mlops-course-repo/project_2
+kubectl apply -f k8s/jupyter/jupyter.yaml
+kubectl rollout status deployment/jupyter -n mlops-project --timeout=5m
+
+# Verify access to all four shared folders | NBAM07
+kubectl exec -n mlops-project deploy/jupyter -- sh -c \
+  'id; for d in notebooks data src sql; do f=$(mktemp "/home/jovyan/work/$d/.nfs-check-XXXXXX") || exit 1; rm "$f" || exit 1; done; echo "All four shared folders are writable."'
+
+# -----------------------------------------------------------------------------
+# 13. Application database — NBAM07
+
+# Deploy PostgreSQL on NBAM19 | NBAM07
+kubectl apply -f k8s/postgres/postgres.yaml
+kubectl rollout status deployment/diabetes-postgres -n mlops-project --timeout=5m
+
+# -----------------------------------------------------------------------------
+# 14. Check the stack — NBAM07
+
+# Check nodes and services | NBAM07
+kubectl get nodes -o wide
+kubectl get pods,pvc,svc -n mlops-project
+helm list -n mlops-project
+
+# -----------------------------------------------------------------------------
+# 15. Inference API
+
+# Deploy the API on NBAM19 | NBAM07
+kubectl apply -f k8s/api/api.yaml
+kubectl get pods -n mlops-project -o wide
+
+# -----------------------------------------------------------------------------
+# 16. Scaled API and monitoring
+
+# Deploy the scaled API on NBAM19 | NBAM07
+kubectl apply -f k8s/api/scaled.yaml
+kubectl get hpa diabetes-api-scaled -n mlops-project
+kubectl top nodes
+
+# Deploy Prometheus and Grafana on NBAM19 | NBAM07
+kubectl apply -f k8s/monitoring/monitoring.yaml
+kubectl rollout status deployment/prometheus -n mlops-project --timeout=10m
+kubectl rollout status deployment/grafana -n mlops-project --timeout=10m
+kubectl get pods,pvc,svc,hpa -n mlops-project -o wide
+
+# Deploy Streamlit on NBAM19 | NBAM07
+kubectl apply -f k8s/streamlit/streamlit.yaml
+kubectl rollout status deployment/diabetes-ui -n mlops-project --timeout=5m
+
+# -----------------------------------------------------------------------------
+# 17. Port forwarding
+
+# Airflow — keep this terminal open | NBAM07
+kubectl port-forward -n mlops-project svc/airflow-api-server --address 0.0.0.0 8080:8080
+
+# Jupyter — keep this terminal open | NBAM07
+kubectl port-forward -n mlops-project svc/jupyter --address 0.0.0.0 8888:8888
+
+# MLflow — keep this terminal open | NBAM07
+kubectl port-forward -n mlops-project svc/mlflow-mlflow --address 0.0.0.0 5000:5000
+
+# MinIO — keep this terminal open | NBAM07
+kubectl port-forward -n mlops-project svc/minio --address 0.0.0.0 9000:9000 9001:9001
+
+# Prometheus — keep this terminal open | NBAM07
+kubectl port-forward -n mlops-project svc/prometheus --address 0.0.0.0 9090:9090
+
+# Grafana — keep this terminal open | NBAM07
+kubectl port-forward -n mlops-project svc/grafana --address 0.0.0.0 3000:3000
+
+# Streamlit — keep this terminal open | NBAM07
+kubectl port-forward -n mlops-project svc/diabetes-ui --address 0.0.0.0 8501:8501
+
+# Open http://10.43.97.96:8080, :8888, :5000, :9001, :9090, :3000 or :8501 | Browser
+# Airflow and Grafana have separate credentials in .env | NBAM07
+
+# -----------------------------------------------------------------------------
+# 18. Notebooks and DAG
+
+# Run notebooks 01–04, then 05 for batch 1, and 06 to inspect the database | Jupyter
+# Run notebook 05 or the Airflow DAG for each batch, never both simultaneously | Jupyter
+# Trigger 02_diabetes_pipeline in Airflow for the next batch | Airflow
+# Load the champion after notebook 05; DAG runs notify the API automatically | NBAM07
+kubectl wait -n mlops-project --for=jsonpath='{.status.containerStatuses[0].started}'=true pod -l app=diabetes-api --timeout=5m
+kubectl exec -n mlops-project deploy/diabetes-api -- python -c 'import urllib.request; print(urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8000/internal/reload", data=b"", method="POST"), timeout=120).read().decode())'
+
+# Check both APIs after a champion exists | NBAM07
+kubectl rollout status deployment/diabetes-api -n mlops-project --timeout=10m
+kubectl rollout status deployment/diabetes-api-scaled -n mlops-project --timeout=10m
+kubectl get pods,svc,hpa -n mlops-project -o wide
+
+# -----------------------------------------------------------------------------
+# 19. Test the services
+
+# Test API — keep this terminal open | NBAM07
+kubectl port-forward -n mlops-project svc/diabetes-api --address 0.0.0.0 8000:8000
+
+# Scaled API — keep this terminal open | NBAM07
+kubectl port-forward -n mlops-project svc/diabetes-api-scaled --address 0.0.0.0 8001:8000
+
+# Check nodes, workloads and autoscaling | NBAM07
+kubectl get nodes -o wide
+kubectl get pods,pvc,svc,hpa -n mlops-project -o wide
+kubectl top nodes
+kubectl top pods -n mlops-project
+
+# Test the original API and see model version and instance | NBAM07
+cd /home/estudiante/mlops-course-repo/project_2
+curl -fsS http://127.0.0.1:8000/ready
+curl -fsS http://127.0.0.1:8000/model-info
+curl -fsS http://127.0.0.1:8000/predict -H 'Content-Type: application/json' --data-binary @api/example-request.json
+
+# Test the scaled API and see model version and instance | NBAM07
+curl -fsS http://127.0.0.1:8001/ready
+curl -fsS http://127.0.0.1:8001/model-info
+curl -fsS http://127.0.0.1:8001/predict -H 'Content-Type: application/json' --data-binary @api/example-request.json
+
+# Reload the original API if a champion notification fails | NBAM07
+curl -fsS -X POST http://127.0.0.1:8000/internal/reload
+
+# Watch autoscaling during a Locust run | NBAM07
+kubectl get hpa diabetes-api-scaled -n mlops-project -w
+
+# Find the Service IP for the Locust SSH tunnel | NBAM07
+kubectl get svc diabetes-api-scaled -n mlops-project -o jsonpath='{.spec.clusterIP}{"\n"}'
+
+# Follow locust/README.md to test Service balancing from your computer | Local computer
+# Port-forward selects one pod; use the SSH tunnel for a balancing test | Local computer
+
+# -----------------------------------------------------------------------------
+# 20. Full cleanup
+
+# Cleanup deletes cluster workloads and PVC data; repository and .env remain | Both machines
+
+# 20.1 Remove workloads; keep both nodes online | NBAM07
+kubectl delete namespace mlops-project --wait --ignore-not-found
+
+# 20.2 Remove the agent and its firewall rules | NBAM19
+sudo /usr/local/bin/k3s-agent-uninstall.sh
+if [ -f "$HOME/.local/state/project_2/nfs-client-selinux" ]; then
+  sudo setsebool -P virt_use_nfs off && rm -f "$HOME/.local/state/project_2/nfs-client-selinux"
+fi
+ZONE="$(sudo firewall-cmd --get-zone-of-interface=ens192)"
+[ "$ZONE" != "no zone" ] || ZONE="$(sudo firewall-cmd --get-default-zone)"
+for port in 8472/udp 10250/tcp; do
+  sudo firewall-cmd --permanent --zone="$ZONE" --remove-rich-rule="rule family=\"ipv4\" source address=\"10.43.97.96/32\" port port=\"${port%/*}\" protocol=\"${port#*/}\" accept"
+done
+sudo firewall-cmd --permanent --zone=trusted --remove-source=10.42.0.0/16
+sudo firewall-cmd --permanent --zone=trusted --remove-source=10.44.0.0/16
+sudo firewall-cmd --reload
+
+# Clear unused Docker build cache from all projects | NBAM19
+docker system df
+docker builder prune
+docker system df
+df -h /var
+
+# 20.3 Remove the server, NFS export and firewall rules | NBAM07
+kubectl delete node nbam19 --ignore-not-found
+sudo /usr/local/bin/k3s-uninstall.sh
+sudo rm -f /etc/exports.d/project2.exports
+if command -v exportfs >/dev/null 2>&1; then sudo exportfs -ra; fi
+if [ -f "$HOME/.local/state/project_2/nfs-export-selinux" ]; then
+  sudo setsebool -P nfs_export_all_rw off && rm -f "$HOME/.local/state/project_2/nfs-export-selinux"
+fi
+
+# Remove firewall rules | NBAM07
+ZONE="$(sudo firewall-cmd --get-zone-of-interface=ens192)"
+[ "$ZONE" != "no zone" ] || ZONE="$(sudo firewall-cmd --get-default-zone)"
+sudo firewall-cmd --permanent --zone="$ZONE" \
+  --remove-rich-rule='rule family="ipv4" source address="10.43.97.108/32" port port="2049" protocol="tcp" accept'
+for port in 6443/tcp 8472/udp 10250/tcp; do
+  sudo firewall-cmd --permanent --zone="$ZONE" --remove-rich-rule="rule family=\"ipv4\" source address=\"10.43.97.108/32\" port port=\"${port%/*}\" protocol=\"${port#*/}\" accept"
+done
+sudo firewall-cmd --permanent --zone=trusted --remove-source=10.42.0.0/16
+sudo firewall-cmd --permanent --zone=trusted --remove-source=10.44.0.0/16
+sudo firewall-cmd --reload
+
+# Remove local K3s and Helm client configuration | NBAM07
+rm -f /home/estudiante/mlops-course-repo/project_2/data/.diabetes-api-image.tar
+rm -f /home/estudiante/mlops-course-repo/project_2/data/.scaled-api-image.tar
+rm -f /home/estudiante/mlops-course-repo/project_2/data/.diabetes-ui-image.tar
+rm -f "$HOME/.local/state/project_2/firewall-sources" "$HOME/.kube/config"
+sed -i '\|export KUBECONFIG="$HOME/.kube/config"|d' "$HOME/.bashrc"
+unset KUBECONFIG
+sudo rm -f /usr/local/bin/helm
+rm -rf /tmp/project_2-helm
+if docker image inspect local/airflow-diabetes:3.2.2 >/dev/null 2>&1; then
+  docker image rm local/airflow-diabetes:3.2.2
+fi
+if docker image inspect local/diabetes-api:scaling-v1 >/dev/null 2>&1; then
+  docker image rm local/diabetes-api:scaling-v1
+fi
+if docker image inspect local/diabetes-api:1.0.0 >/dev/null 2>&1; then
+  docker image rm local/diabetes-api:1.0.0
+fi
+if docker image inspect local/diabetes-ui:1.0.0 >/dev/null 2>&1; then
+  docker image rm local/diabetes-ui:1.0.0
+fi
+for image in jesteban247/diabetes-api:20261102-v3 jesteban247/diabetes-ui:20261102-v1 jesteban247/diabetes-airflow:20261102-v1; do
+  if docker image inspect "$image" >/dev/null 2>&1; then docker image rm "$image"; fi
+done
+
+# Clear unused Docker build cache from all projects | NBAM07
+docker system df
+docker builder prune
+docker system df
+df -h /var
+
+# Project file ACLs and NFS packages/service are kept | NBAM07
+df -h /var

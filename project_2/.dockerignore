@@ -1,0 +1,14 @@
+*
+!api/
+!api/**
+!streamlit/
+!streamlit/**
+!src/
+!src/diabetes/
+!src/diabetes/**
+!k8s/
+!k8s/airflow/
+!k8s/airflow/Dockerfile
+!k8s/airflow/requirements.txt
+**/__pycache__/
+**/*.pyc

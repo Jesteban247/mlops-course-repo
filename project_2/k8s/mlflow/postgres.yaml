@@ -1,0 +1,65 @@
+# Separate MLflow metadata database, unrelated to Airflow PostgreSQL.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-postgres-data
+  namespace: mlops-project
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests: {storage: 2Gi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow-postgres
+  namespace: mlops-project
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: mlflow-postgres}
+  template:
+    metadata:
+      labels: {app: mlflow-postgres}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: nbam07}
+      containers:
+        - name: postgres
+          image: postgres:16.6
+          ports: [{containerPort: 5432}]
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef: {name: stack-secrets, key: MLFLOW_DB_USER}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: stack-secrets, key: MLFLOW_DB_PASSWORD}
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef: {name: stack-secrets, key: MLFLOW_DB_NAME}
+            - name: PGDATA
+              valueFrom: {configMapKeyRef: {name: project-settings, key: POSTGRES_PGDATA}}
+          volumeMounts:
+            - {name: pgdata, mountPath: /var/lib/postgresql/data}
+          readinessProbe:
+            exec:
+              command: ['sh', '-c', 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 192Mi}
+            limits: {cpu: "1", memory: 768Mi}
+      volumes:
+        - name: pgdata
+          persistentVolumeClaim: {claimName: mlflow-postgres-data}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow-postgres
+  namespace: mlops-project
+spec:
+  selector: {app: mlflow-postgres}
+  ports: [{name: pg, port: 5432, targetPort: 5432}]
