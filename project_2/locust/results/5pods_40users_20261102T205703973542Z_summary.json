@@ -1,0 +1,27 @@
+{
+  "users": 40,
+  "spawn_rate": 5.0,
+  "replica_scenario": "5",
+  "connection_mode": "fresh",
+  "warmup_seconds": 10.0,
+  "measurement_seconds": 60.0,
+  "requests": 1581,
+  "successful_requests": 1581,
+  "failed_requests": 0,
+  "failure_percent": 0.0,
+  "requests_per_second": 26.35,
+  "average_latency_ms": 1224.58,
+  "p50_latency_ms": 1100.0,
+  "p95_latency_ms": 2600.0,
+  "p99_latency_ms": 3200.0,
+  "pod_responses": {
+    "diabetes-api-scaled-7c894f87f8-zxbpp": 345,
+    "diabetes-api-scaled-7c894f87f8-fm5fq": 310,
+    "diabetes-api-scaled-7c894f87f8-nqqln": 293,
+    "diabetes-api-scaled-7c894f87f8-h2xd9": 298,
+    "diabetes-api-scaled-7c894f87f8-qmpp6": 335
+  },
+  "model_versions": {
+    "14": 1581
+  }
+}

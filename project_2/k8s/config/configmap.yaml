@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: project-settings
+  namespace: mlops-project
+data:
+  MLFLOW_TRACKING_URI: http://mlflow-mlflow.mlops-project.svc.cluster.local:5000
+  MINIO_ENDPOINT_URL: http://minio.mlops-project.svc.cluster.local:9000
+  AWS_DEFAULT_REGION: us-east-1
+  DIABETES_DB_HOST: diabetes-postgres.mlops-project.svc.cluster.local
+  POSTGRES_PGDATA: /var/lib/postgresql/data/pgdata
+  SCALED_API_URL: http://diabetes-api-scaled.mlops-project.svc.cluster.local:8000
+  TEST_API_RELOAD_URL: http://diabetes-api-reload.mlops-project.svc.cluster.local:8000
+  TEST_API_NAME: test-api
+  SCALED_API_NAME: scaled-api
+  MODEL_REFRESH_SECONDS: '60'
+  AIRFLOW_PYTHONPATH: /opt/airflow/src
+  MLFLOW_ARTIFACT_PROGRESS: 'false'

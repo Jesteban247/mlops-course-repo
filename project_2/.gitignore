@@ -1,0 +1,9 @@
+.env
+__pycache__/
+.pytest_cache/
+.ipynb_checkpoints/
+*.pyc
+notebooks/*.html
+notebooks/*.png
+.venv-locust/
+!locust/results/*.log

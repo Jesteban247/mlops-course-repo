@@ -1,0 +1,176 @@
+# Airflow Helm chart 1.22.0 / Airflow 3.2.2
+executor: LocalExecutor
+airflowVersion: "3.2.2"
+defaultAirflowTag: "3.2.2"
+migrateDatabaseJob:
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+  nodeSelector:
+    kubernetes.io/hostname: nbam07
+createUserJob:
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+  nodeSelector:
+    kubernetes.io/hostname: nbam07
+dags:
+  persistence:
+    enabled: false
+  gitSync:
+    enabled: false
+postgresql:
+  enabled: true
+  primary:
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {cpu: "1", memory: 1Gi}
+    nodeSelector:
+      kubernetes.io/hostname: nbam07
+    persistence:
+      enabled: true
+      storageClass: local-path
+      size: 3Gi
+redis:
+  enabled: false
+pgbouncer:
+  enabled: false
+flower:
+  enabled: false
+triggerer:
+  enabled: false
+workers:
+  celery:
+    persistence:
+      enabled: true
+      storageClassName: local-path
+      size: 2Gi
+logs:
+  persistence:
+    enabled: false
+dagProcessor:
+  logGroomerSidecar:
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {cpu: 200m, memory: 128Mi}
+  replicas: 1
+  nodeSelector:
+    kubernetes.io/hostname: nbam07
+  extraVolumes:
+    - name: live-dags
+      hostPath:
+        path: /home/estudiante/mlops-course-repo/project_2/dags
+        type: Directory
+    - name: shared-sql
+      hostPath:
+        path: /home/estudiante/mlops-course-repo/project_2/sql
+        type: Directory
+    - name: shared-src
+      hostPath:
+        path: /home/estudiante/mlops-course-repo/project_2/src
+        type: Directory
+  extraVolumeMounts:
+    - name: live-dags
+      mountPath: /opt/airflow/dags
+      readOnly: true
+    - name: shared-sql
+      mountPath: /opt/airflow/sql
+      readOnly: true
+    - name: shared-src
+      mountPath: /opt/airflow/src
+      readOnly: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+scheduler:
+  logGroomerSidecar:
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {cpu: 200m, memory: 128Mi}
+  replicas: 1
+  nodeSelector:
+    kubernetes.io/hostname: nbam07
+  extraVolumes:
+    - name: live-dags
+      hostPath:
+        path: /home/estudiante/mlops-course-repo/project_2/dags
+        type: Directory
+    - name: shared-sql
+      hostPath:
+        path: /home/estudiante/mlops-course-repo/project_2/sql
+        type: Directory
+    - name: shared-src
+      hostPath:
+        path: /home/estudiante/mlops-course-repo/project_2/src
+        type: Directory
+  extraVolumeMounts:
+    - name: live-dags
+      mountPath: /opt/airflow/dags
+      readOnly: true
+    - name: shared-sql
+      mountPath: /opt/airflow/sql
+      readOnly: true
+    - name: shared-src
+      mountPath: /opt/airflow/src
+      readOnly: true
+  resources:
+    requests:
+      cpu: 150m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 3Gi
+apiServer:
+  replicas: 1
+  nodeSelector:
+    kubernetes.io/hostname: nbam07
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+# Environment variables in every Airflow component; credentials via Kubernetes Secret.
+env: []
+extraEnv: |
+  - name: MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR
+    valueFrom: {configMapKeyRef: {name: project-settings, key: MLFLOW_ARTIFACT_PROGRESS}}
+  - name: PYTHONPATH
+    valueFrom: {configMapKeyRef: {name: project-settings, key: AIRFLOW_PYTHONPATH}}
+  - name: S3_ENDPOINT_URL
+    valueFrom: {configMapKeyRef: {name: project-settings, key: MINIO_ENDPOINT_URL}}
+  - name: MLFLOW_TRACKING_URI
+    valueFrom: {configMapKeyRef: {name: project-settings, key: MLFLOW_TRACKING_URI}}
+  - name: DIABETES_DB_HOST
+    valueFrom: {configMapKeyRef: {name: project-settings, key: DIABETES_DB_HOST}}
+  - name: TEST_API_RELOAD_URL
+    valueFrom: {configMapKeyRef: {name: project-settings, key: TEST_API_RELOAD_URL}}
+  - name: SCALED_API_URL
+    valueFrom: {configMapKeyRef: {name: project-settings, key: SCALED_API_URL}}
+secret:
+  - envName: AWS_ACCESS_KEY_ID
+    secretName: stack-secrets
+    secretKey: MINIO_ROOT_USER
+  - envName: AWS_SECRET_ACCESS_KEY
+    secretName: stack-secrets
+    secretKey: MINIO_ROOT_PASSWORD
+  - envName: DIABETES_DB_USER
+    secretName: stack-secrets
+    secretKey: DIABETES_DB_USER
+  - envName: DIABETES_DB_PASSWORD
+    secretName: stack-secrets
+    secretKey: DIABETES_DB_PASSWORD
+  - envName: DIABETES_DB_NAME
+    secretName: stack-secrets
+    secretKey: DIABETES_DB_NAME
+
+statsd:
+  resources:
+    requests: {cpu: 10m, memory: 64Mi}
+    limits: {cpu: 200m, memory: 256Mi}

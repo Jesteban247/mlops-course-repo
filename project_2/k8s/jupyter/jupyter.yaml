@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jupyter
+  namespace: mlops-project
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: jupyter}
+  template:
+    metadata:
+      labels: {app: jupyter}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: nbam19}
+      enableServiceLinks: false
+      containers:
+        - name: jupyter
+          image: quay.io/jupyter/scipy-notebook:python-3.12
+          ports:
+            - {name: http, containerPort: 8888}
+          env:
+            - name: JUPYTER_TOKEN
+              valueFrom:
+                secretKeyRef: {name: stack-secrets, key: JUPYTER_TOKEN}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: {name: stack-secrets, key: MINIO_ROOT_USER}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: {name: stack-secrets, key: MINIO_ROOT_PASSWORD}
+            - name: S3_ENDPOINT_URL
+              valueFrom: {configMapKeyRef: {name: project-settings, key: MINIO_ENDPOINT_URL}}
+            - name: MLFLOW_TRACKING_URI
+              valueFrom: {configMapKeyRef: {name: project-settings, key: MLFLOW_TRACKING_URI}}
+            - name: DIABETES_DB_HOST
+              valueFrom: {configMapKeyRef: {name: project-settings, key: DIABETES_DB_HOST}}
+            - name: DIABETES_DB_NAME
+              valueFrom:
+                secretKeyRef: {name: stack-secrets, key: DIABETES_DB_NAME}
+            - name: DIABETES_DB_USER
+              valueFrom:
+                secretKeyRef: {name: stack-secrets, key: DIABETES_DB_USER}
+            - name: DIABETES_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: stack-secrets, key: DIABETES_DB_PASSWORD}
+          volumeMounts:
+            - {name: notebooks, mountPath: /home/jovyan/work/notebooks}
+            - {name: data, mountPath: /home/jovyan/work/data}
+            - {name: src, mountPath: /home/jovyan/work/src}
+            - {name: sql, mountPath: /home/jovyan/work/sql}
+          resources:
+            requests: {cpu: 150m, memory: 384Mi}
+            limits: {cpu: "1", memory: 2Gi}
+      volumes:
+        - name: sql
+          nfs:
+            server: 10.43.97.96
+            path: /home/estudiante/mlops-course-repo/project_2/sql
+        - name: src
+          nfs:
+            server: 10.43.97.96
+            path: /home/estudiante/mlops-course-repo/project_2/src
+        - name: notebooks
+          nfs:
+            server: 10.43.97.96
+            path: /home/estudiante/mlops-course-repo/project_2/notebooks
+        - name: data
+          nfs:
+            server: 10.43.97.96
+            path: /home/estudiante/mlops-course-repo/project_2/data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jupyter
+  namespace: mlops-project
+spec:
+  selector: {app: jupyter}
+  ports:
+    - {name: http, port: 8888, targetPort: 8888}

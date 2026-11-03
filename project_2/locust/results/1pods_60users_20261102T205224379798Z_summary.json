@@ -1,0 +1,23 @@
+{
+  "users": 60,
+  "spawn_rate": 5.0,
+  "replica_scenario": "1",
+  "connection_mode": "fresh",
+  "warmup_seconds": 10.0,
+  "measurement_seconds": 60.0,
+  "requests": 417,
+  "successful_requests": 392,
+  "failed_requests": 25,
+  "failure_percent": 6.0,
+  "requests_per_second": 6.95,
+  "average_latency_ms": 8692.81,
+  "p50_latency_ms": 8400.0,
+  "p95_latency_ms": 21000.0,
+  "p99_latency_ms": 25000.0,
+  "pod_responses": {
+    "diabetes-api-scaled-7c894f87f8-h2xd9": 392
+  },
+  "model_versions": {
+    "14": 392
+  }
+}

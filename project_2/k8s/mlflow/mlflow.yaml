@@ -1,0 +1,32 @@
+replicaCount: 1
+nodeSelector:
+  kubernetes.io/hostname: nbam07
+service:
+  type: ClusterIP
+mlflow:
+  backendStoreUriFrom:
+    secretKeyRef: {name: mlflow-db-uri, key: uri}
+  artifactsDestination: s3://mlflow-artifacts
+server:
+  value_options:
+    host: '0.0.0.0'
+    port: 5000
+    workers: 1
+    allowed_hosts: 'mlflow-mlflow.mlops-project.svc.cluster.local:5000,10.43.97.96:5000,nbam07:5000,localhost:5000,127.0.0.1:5000'
+  flag_options: [serve_artifacts]
+env:
+  - name: AWS_ACCESS_KEY_ID
+    valueFrom:
+      secretKeyRef: {name: stack-secrets, key: MINIO_ROOT_USER}
+  - name: AWS_SECRET_ACCESS_KEY
+    valueFrom:
+      secretKeyRef: {name: stack-secrets, key: MINIO_ROOT_PASSWORD}
+  - name: MLFLOW_S3_ENDPOINT_URL
+    valueFrom: {configMapKeyRef: {name: project-settings, key: MINIO_ENDPOINT_URL}}
+  - name: AWS_DEFAULT_REGION
+    valueFrom: {configMapKeyRef: {name: project-settings, key: AWS_DEFAULT_REGION}}
+storage:
+  enabled: false
+resources:
+  requests: {cpu: 150m, memory: 1Gi}
+  limits: {cpu: "2", memory: 3Gi}

@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: diabetes-api, namespace: mlops-project}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: diabetes-api}
+  template:
+    metadata:
+      labels: {app: diabetes-api}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: nbam19}
+      containers:
+        - name: api
+          image: jesteban247/diabetes-api:20261102-v3
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8000}]
+          env:
+            - name: API_NAME
+              valueFrom: {configMapKeyRef: {name: project-settings, key: TEST_API_NAME}}
+            - name: MLFLOW_TRACKING_URI
+              valueFrom: {configMapKeyRef: {name: project-settings, key: MLFLOW_TRACKING_URI}}
+            - name: MLFLOW_S3_ENDPOINT_URL
+              valueFrom: {configMapKeyRef: {name: project-settings, key: MINIO_ENDPOINT_URL}}
+            - name: AWS_DEFAULT_REGION
+              valueFrom: {configMapKeyRef: {name: project-settings, key: AWS_DEFAULT_REGION}}
+            - name: DIABETES_DB_HOST
+              valueFrom: {configMapKeyRef: {name: project-settings, key: DIABETES_DB_HOST}}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: stack-secrets, key: MINIO_ROOT_USER}}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: stack-secrets, key: MINIO_ROOT_PASSWORD}}
+            - name: DIABETES_DB_USER
+              valueFrom: {secretKeyRef: {name: stack-secrets, key: DIABETES_DB_USER}}
+            - name: DIABETES_DB_PASSWORD
+              valueFrom: {secretKeyRef: {name: stack-secrets, key: DIABETES_DB_PASSWORD}}
+            - name: DIABETES_DB_NAME
+              valueFrom: {secretKeyRef: {name: stack-secrets, key: DIABETES_DB_NAME}}
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: '1', memory: 2Gi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: diabetes-api, namespace: mlops-project}
+spec:
+  selector: {app: diabetes-api}
+  ports: [{name: http, port: 8000, targetPort: http}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: diabetes-api-reload, namespace: mlops-project}
+spec:
+  publishNotReadyAddresses: true
+  selector: {app: diabetes-api}
+  ports: [{name: http, port: 8000, targetPort: http}]
