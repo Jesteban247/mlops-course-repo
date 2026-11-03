@@ -62,3 +62,7 @@ The scaled API HPA runs 1–5 replicas with a 70% CPU utilization target.
 ## Load tests
 
 [Locust instructions](locust/README.md) · [Results and analysis](locust/results/REPORT.md)
+
+## Video
+[![Demo del proyecto](https://img.youtube.com/vi/YwDw4S5V44o/hqdefault.jpg)](https://youtu.be/YwDw4S5V44o)
+
