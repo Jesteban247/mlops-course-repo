@@ -6,7 +6,7 @@ client = TestClient(app)
 
 
 def test_normalize_text():
-    assert normalize_text("  Hello,   WORLD! ") == "hello"
+    assert normalize_text("  Hello,   WORLD! ") == "hello world"
 
 
 def test_tokenize_text():
