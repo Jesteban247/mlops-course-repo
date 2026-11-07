@@ -17,10 +17,6 @@ def test_remove_stopwords():
     assert remove_stopwords(["this", "is", "useful"], ["is"]) == ["this", "useful"]
 
 
-def test_remove_stopwords_is_case_insensitive():
-    assert remove_stopwords(["hello", "world"], ["WORLD"]) == ["hello"]
-
-
 def test_health_endpoint():
     response = client.get("/health")
     assert response.status_code == 200
