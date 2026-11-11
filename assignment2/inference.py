@@ -1,37 +1,50 @@
 from pathlib import Path
+import json
 import pickle
 
 
 MODEL_DIR = Path("/app/models")
+PRODUCTION_DIR = MODEL_DIR / "production"
+MANIFEST_PATH = PRODUCTION_DIR / "manifest.json"
 CLASS_NAMES = {0: "setosa", 1: "versicolor", 2: "virginica"}
 
 
-def available_models() -> list[str]:
-    return sorted(path.stem for path in MODEL_DIR.glob("*.pkl"))
+def _load_manifest() -> dict:
+    if not MANIFEST_PATH.exists():
+        return {}
+    return json.loads(MANIFEST_PATH.read_text())
+
+
+def available_models() -> list[dict]:
+    manifest = _load_manifest()
+    return [{"name": name, **entry} for name, entry in sorted(manifest.items())]
 
 
 def load_model(model_name: str):
-    if model_name not in available_models():
-        models = ", ".join(available_models()) or "none"
-        raise ValueError(f"Unknown model. Available models: {models}")
+    manifest = _load_manifest()
+    if model_name not in manifest:
+        names = ", ".join(sorted(manifest)) or "none"
+        raise ValueError(f"Unknown model. Available models: {names}")
 
-    model_path = MODEL_DIR / f"{model_name}.pkl"
+    version = manifest[model_name]["version"]
+    model_path = PRODUCTION_DIR / model_name / version / "model.pkl"
     if not model_path.exists():
         raise FileNotFoundError(f"Model file not found: {model_path}")
 
     with model_path.open("rb") as file:
-        return pickle.load(file)
+        return pickle.load(file), version
 
 
 def predict(model_name: str, features: list[float]) -> dict:
     if len(features) != 4:
         raise ValueError("Exactly 4 features are required")
 
-    model = load_model(model_name)
+    model, version = load_model(model_name)
     prediction = int(model.predict([features])[0])
 
     return {
         "model": model_name,
+        "version": version,
         "prediction": prediction,
         "class_name": CLASS_NAMES[prediction],
     }

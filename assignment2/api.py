@@ -18,6 +18,7 @@ class PredictionRequest(BaseModel):
 
 class PredictionResponse(BaseModel):
     model: str
+    version: str
     prediction: int
     class_name: str
 
