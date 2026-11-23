@@ -1,0 +1,11 @@
+fastapi==0.115.14
+uvicorn==0.35.0
+mlflow==3.17.2
+scikit-learn==1.9.1
+numpy==2.5.5
+pandas==3.1.1
+numexpr==2.14.2
+xgboost-cpu==3.4.1
+boto3==1.42.76
+psycopg2-binary==2.9.10
+SQLAlchemy==2.0.43

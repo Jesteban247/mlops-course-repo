@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: project-3-airflow
+  namespace: argocd
+spec:
+  project: default
+  sources:
+  - repoURL: https://airflow.apache.org
+    chart: airflow
+    targetRevision: 1.22.0
+    helm:
+      releaseName: airflow
+      valueFiles:
+      - $values/project_3/k8s/airflow/values.yaml
+  - repoURL: https://github.com/Jesteban247/mlops-course-repo.git
+    targetRevision: main
+    ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: project-3
+  syncPolicy:
+    syncOptions:
+    - CreateNamespace=true
+    - ServerSideApply=true

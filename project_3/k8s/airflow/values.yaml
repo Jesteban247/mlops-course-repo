@@ -1,0 +1,212 @@
+executor: LocalExecutor
+airflowVersion: 3.2.2
+defaultAirflowTag: 3.2.2
+migrateDatabaseJob:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: '1'
+      memory: 1Gi
+  nodeSelector:
+    kubernetes.io/hostname: nbam07
+  useHelmHooks: false
+  ttlSecondsAfterFinished: null
+createUserJob:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: '1'
+      memory: 1Gi
+  nodeSelector:
+    kubernetes.io/hostname: nbam07
+  args:
+  - bash
+  - -c
+  - exec airflow users create -r Admin -u "$AIRFLOW_USERNAME" -p "$AIRFLOW_PASSWORD" -e admin@example.com -f Project -l Admin
+  useHelmHooks: false
+  ttlSecondsAfterFinished: null
+dags:
+  persistence:
+    enabled: false
+  gitSync:
+    enabled: false
+postgresql:
+  enabled: false
+redis:
+  enabled: false
+pgbouncer:
+  enabled: false
+flower:
+  enabled: false
+triggerer:
+  enabled: false
+workers:
+  celery:
+    persistence:
+      enabled: true
+      storageClassName: local-path
+      size: 2Gi
+logs:
+  persistence:
+    enabled: false
+dagProcessor:
+  logGroomerSidecar:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+  replicas: 1
+  nodeSelector:
+    kubernetes.io/hostname: nbam07
+  extraVolumes:
+  - name: live-dags
+    hostPath:
+      path: /home/estudiante/mlops-course-repo/project_3/dags
+      type: Directory
+  - name: shared-sql
+    hostPath:
+      path: /home/estudiante/mlops-course-repo/project_3/sql
+      type: Directory
+  - name: shared-src
+    hostPath:
+      path: /home/estudiante/mlops-course-repo/project_3/src
+      type: Directory
+  - name: shared-data
+    hostPath:
+      path: /home/estudiante/mlops-course-repo/project_3/data
+      type: Directory
+  extraVolumeMounts:
+  - name: live-dags
+    mountPath: /opt/airflow/dags
+    readOnly: true
+  - name: shared-sql
+    mountPath: /opt/airflow/sql
+    readOnly: true
+  - name: shared-src
+    mountPath: /opt/airflow/src
+    readOnly: true
+  - name: shared-data
+    mountPath: /opt/airflow/data
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: '1'
+      memory: 1Gi
+scheduler:
+  logGroomerSidecar:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+  replicas: 1
+  nodeSelector:
+    kubernetes.io/hostname: nbam07
+  extraVolumes:
+  - name: live-dags
+    hostPath:
+      path: /home/estudiante/mlops-course-repo/project_3/dags
+      type: Directory
+  - name: shared-sql
+    hostPath:
+      path: /home/estudiante/mlops-course-repo/project_3/sql
+      type: Directory
+  - name: shared-src
+    hostPath:
+      path: /home/estudiante/mlops-course-repo/project_3/src
+      type: Directory
+  - name: shared-data
+    hostPath:
+      path: /home/estudiante/mlops-course-repo/project_3/data
+      type: Directory
+  extraVolumeMounts:
+  - name: live-dags
+    mountPath: /opt/airflow/dags
+    readOnly: true
+  - name: shared-sql
+    mountPath: /opt/airflow/sql
+    readOnly: true
+  - name: shared-src
+    mountPath: /opt/airflow/src
+    readOnly: true
+  - name: shared-data
+    mountPath: /opt/airflow/data
+  resources:
+    requests:
+      cpu: 150m
+      memory: 1Gi
+    limits:
+      cpu: '2'
+      memory: 3Gi
+  env:
+  - name: _PIP_ADDITIONAL_REQUIREMENTS
+    value: apache-airflow==3.2.2 mlflow==3.17.2 pandas==3.1.1 numpy==2.5.5 numexpr==2.14.2 scikit-learn==1.9.1 xgboost-cpu==3.4.1
+      psycopg2-binary==2.9.10 boto3==1.42.76
+  startupProbe:
+    failureThreshold: 90
+    periodSeconds: 10
+    timeoutSeconds: 20
+    command:
+    - sh
+    - -c
+    - AIRFLOW__LOGGING__LOGGING_LEVEL=ERROR exec airflow jobs check --job-type SchedulerJob --local
+  livenessProbe:
+    initialDelaySeconds: 10
+    failureThreshold: 5
+    periodSeconds: 60
+    timeoutSeconds: 20
+    command:
+    - sh
+    - -c
+    - AIRFLOW__LOGGING__LOGGING_LEVEL=ERROR exec airflow jobs check --job-type SchedulerJob --local
+apiServer:
+  replicas: 1
+  nodeSelector:
+    kubernetes.io/hostname: nbam07
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: '1'
+      memory: 1Gi
+env: []
+extraEnv: |
+  - name: PYTHONPATH
+    value: /opt/airflow/src
+  - name: SCHEMA_PATH
+    value: /opt/airflow/sql/01_schema.sql
+  - name: APP_DB_HOST
+    value: property-postgres
+  - name: MLFLOW_TRACKING_URI
+    value: http://mlflow:5000
+  - name: MODEL_NAME
+    value: property-price
+secret: []
+statsd:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+extraEnvFrom: |
+  - secretRef:
+      name: project-3-settings
+fernetKeySecretName: project-3-airflow-fernet
+apiSecretKeySecretName: project-3-airflow-api
+jwtSecretName: project-3-airflow-jwt
+data:
+  metadataSecretName: project-3-airflow-metadata
