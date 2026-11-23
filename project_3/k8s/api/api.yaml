@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: property-api, namespace: project-3}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: property-api}}
+  template:
+    metadata: {labels: {app: property-api}}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: nbam19}
+      containers:
+        - name: api
+          image: docker.io/jesteban247/project-3-property-api:latest
+          imagePullPolicy: Always
+          ports: [{name: http, containerPort: 8000}]
+          envFrom:
+            - secretRef: {name: project-3-settings}
+          env:
+            - {name: MLFLOW_TRACKING_URI, value: 'http://mlflow:5000'}
+            - {name: APP_DB_HOST, value: property-postgres}
+            - {name: MODEL_NAME, value: property-price}
+            - {name: MODEL_REFRESH_SECONDS, value: '60'}
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 100m, memory: 384Mi}
+            limits: {cpu: '1', memory: 2Gi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: property-api, namespace: project-3}
+spec:
+  selector: {app: property-api}
+  ports: [{name: http, port: 8000, targetPort: http}]
