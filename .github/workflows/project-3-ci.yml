@@ -1,13 +1,17 @@
 name: Project 3 CI and API image
+
 on:
   pull_request:
     branches: [main]
     paths: ['project_3/**', '.github/workflows/project-3-ci.yml']
-  push:
-    branches: [main]
-    paths: ['project_3/api/**', 'project_3/src/**', 'project_3/tests/**', '.github/workflows/project-3-ci.yml']
+
 permissions:
   contents: read
+
+concurrency:
+  group: project-3-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -20,42 +24,72 @@ jobs:
           cache-dependency-path: project_3/api/requirements.txt
       - run: pip install -r project_3/api/requirements.txt pytest httpx
       - run: PYTHONPATH=project_3/src:project_3 pytest -q project_3/tests
+
   publish:
-    permissions:
-      contents: write
-    concurrency:
-      group: project-3-api-publish
-      cancel-in-progress: false
-    if: github.event_name == 'push'
     needs: test
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     environment: DOCKERHUB
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/login-action@v4
+      - name: Check PR branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check whether an image is needed
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$(git log -1 --format=%s)" = 'Update Project 3 API image' ] && \
+             [ "$(git diff-tree --no-commit-id --name-only -r HEAD)" = 'project_3/k8s/api/api.yaml' ]; then
+            echo 'build=false' >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BASE_SHA" HEAD -- project_3/api project_3/src .github/workflows/project-3-ci.yml; then
+            echo 'build=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Log in to Docker Hub
+        if: steps.changes.outputs.build == 'true'
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/build-push-action@v7
+      - name: Build and publish candidate image
+        if: steps.changes.outputs.build == 'true'
+        uses: docker/build-push-action@v7
         with:
           context: ./project_3
           file: ./project_3/api/Dockerfile
           push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/project-3-property-api:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/project-3-property-api:sha-${{ github.sha }}
-      - name: Update API image in main
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/project-3-property-api:sha-${{ github.event.pull_request.head.sha }}
+      - name: Create GitHub App token
+        if: steps.changes.outputs.build == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.PROJECT3_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PROJECT3_APP_PRIVATE_KEY }}
+      - name: Check out PR branch for update
+        if: steps.changes.outputs.build == 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Commit image tag to PR branch
+        if: steps.changes.outputs.build == 'true'
         env:
           IMAGE_REPOSITORY: ${{ secrets.DOCKERHUB_USERNAME }}/project-3-property-api
-          IMAGE_COMMIT: ${{ github.sha }}
+          IMAGE_COMMIT: ${{ github.event.pull_request.head.sha }}
+          BRANCH: ${{ github.head_ref }}
         run: |
           set -euo pipefail
-          git fetch origin main
-          if ! git diff --quiet "$IMAGE_COMMIT" origin/main -- project_3/api project_3/src project_3/tests .github/workflows/project-3-ci.yml; then
-            echo "A newer API change exists on main; its workflow will update the manifest."
-            exit 0
+          if [ "$(git rev-parse HEAD)" != "$IMAGE_COMMIT" ]; then
+            echo 'The PR branch changed while the image was building; the newer run will handle it.'
+            exit 1
           fi
-          git switch -C main origin/main
           python - <<'PYTHON'
           import os
           import re
@@ -70,11 +104,11 @@ jobs:
           manifest.write_text(updated)
           PYTHON
           if git diff --quiet -- project_3/k8s/api/api.yaml; then
-            echo "Manifest already references the published image."
+            echo 'Manifest already references this image.'
             exit 0
           fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.name 'project-3-image-bot'
+          git config user.email 'project-3-image-bot@users.noreply.github.com'
           git add project_3/k8s/api/api.yaml
-          git commit -m "Update Project 3 API image to ${IMAGE_COMMIT}"
-          git push origin HEAD:main
+          git commit -m 'Update Project 3 API image'
+          git push origin "HEAD:refs/heads/$BRANCH"

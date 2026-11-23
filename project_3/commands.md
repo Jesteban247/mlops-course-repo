@@ -266,18 +266,18 @@ curl -fsS http://127.0.0.1:8000/predict -H 'Content-Type: application/json' --da
 ```bash
 cd /home/estudiante/mlops-course-repo
 git status
-git switch -c project-3-pipeline
+git switch -c YOUR_BRANCH
 git add project_3 .github/workflows/project-3-ci.yml
 git diff --cached --stat
-git commit -m 'Add Project 3 pipeline and API'
-git push -u origin project-3-pipeline
+git commit -m 'YOUR COMMIT MESSAGE'
+git push -u origin YOUR_BRANCH
 ```
 
-Open and merge the PR. Wait for `Project 3 CI and API image` to publish the image and update the manifest on `main` using the `DOCKERHUB` environment secrets. The workflow needs permission to push to `main`.
+Open a PR to `main`. Wait for the checks and the automatic image-tag commit before merging.
 
 ```bash
 git switch main && git pull --ff-only origin main
-git branch -d project-3-pipeline
+git branch -d YOUR_BRANCH
 ```
 
 ## 13. Argo CD — NBAM07
