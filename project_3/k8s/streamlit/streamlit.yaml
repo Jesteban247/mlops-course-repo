@@ -10,7 +10,7 @@ spec:
       nodeSelector: {kubernetes.io/hostname: nbam19}
       containers:
         - name: streamlit
-          image: docker.io/jesteban247/project-3-property-ui:latest
+          image: docker.io/jesteban247/project-3-property-ui:sha-49fc24c9b7cafaab344c6cb917335d2dc90968de
           ports: [{name: http, containerPort: 8501}]
           envFrom: [{secretRef: {name: project-3-settings}}]
           env:
