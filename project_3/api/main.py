@@ -3,6 +3,7 @@ import logging
 import os
 import socket
 import threading
+import time
 import uuid
 from contextlib import asynccontextmanager
 
@@ -11,7 +12,8 @@ import mlflow.sklearn
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from mlflow.tracking import MlflowClient
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
@@ -25,6 +27,9 @@ _state_lock = threading.Lock()
 _reload_lock = threading.Lock()
 _state = None
 _db = None
+PREDICTIONS = Counter('property_predictions_total', 'Prediction requests', ['status'])
+LATENCY = Histogram('property_prediction_seconds', 'Prediction latency in seconds')
+MODEL = Gauge('property_model_loaded', 'Loaded model version', ['version'])
 
 
 def refresh_model():
@@ -38,6 +43,8 @@ def refresh_model():
         model = mlflow.sklearn.load_model(f'models:/{MODEL_NAME}/{version}')
         with _state_lock:
             _state = {'model': model, 'version': version}
+            MODEL.clear()
+            MODEL.labels(version=version).set(1)
         return version
 
 
@@ -99,7 +106,31 @@ async def validation_error(request: Request, exc: RequestValidationError):
         record(str(uuid.uuid4()), body, None, None, 'invalid', 'input validation failed')
     except Exception:
         logger.exception('Could not record invalid prediction request')
-    return JSONResponse(status_code=422, content={'detail': exc.errors()})
+    details = [
+        {key: error[key] for key in ('loc', 'msg', 'type')}
+        for error in exc.errors()
+    ]
+    return JSONResponse(status_code=422, content={'detail': details})
+
+
+@app.middleware('http')
+async def prediction_metrics(request: Request, call_next):
+    if request.url.path != '/predict':
+        return await call_next(request)
+    started = time.perf_counter()
+    status = '500'
+    try:
+        response = await call_next(request)
+        status = str(response.status_code)
+        return response
+    finally:
+        PREDICTIONS.labels(status=status).inc()
+        LATENCY.observe(time.perf_counter() - started)
+
+
+@app.get('/metrics')
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get('/health')

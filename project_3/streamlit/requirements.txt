@@ -1,0 +1,7 @@
+streamlit==1.51.0
+pandas==2.3.3
+numpy==2.2.6
+SQLAlchemy==2.0.43
+psycopg2-binary==2.9.10
+boto3==1.42.76
+requests==2.34.2

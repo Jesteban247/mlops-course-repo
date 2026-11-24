@@ -20,6 +20,8 @@ spec:
     server: https://kubernetes.default.svc
     namespace: project-3
   syncPolicy:
+    automated:
+      enabled: true
     syncOptions:
     - CreateNamespace=true
     - ServerSideApply=true

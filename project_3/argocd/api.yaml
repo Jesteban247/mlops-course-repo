@@ -12,6 +12,15 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: project-3
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    name: property-api
+    jsonPointers:
+    - /spec/replicas
   syncPolicy:
+    automated:
+      enabled: true
     syncOptions:
     - CreateNamespace=true
+    - RespectIgnoreDifferences=true

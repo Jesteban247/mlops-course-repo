@@ -1,4 +1,5 @@
 """Train, compare, and record candidate models."""
+import logging
 import os
 
 import mlflow
@@ -9,8 +10,11 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sqlalchemy import text
 
 from property_ml.data import _frame
+from property_ml.explain import shap_importance
 from property_ml.features import RAW_FEATURES, build_model
 from property_ml.settings import GROUP, MODEL_NAME, engine
+
+logger = logging.getLogger(__name__)
 
 
 def train_candidate(batch):
@@ -41,12 +45,32 @@ def train_candidate(batch):
                 'test_rmse':float(mean_squared_error(test['price'], test_predictions)**.5),
                 'test_r2':float(r2_score(test['price'], test_predictions))})
             mlflow.set_tags({'training_reason':training_reason, 'batch_number':str(batch)})
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+            figure, axis = plt.subplots(figsize=(6, 5))
+            axis.scatter(validation['price'], val_predictions, alpha=.3, s=8)
+            low = min(float(validation['price'].min()), float(val_predictions.min()))
+            high = max(float(validation['price'].max()), float(val_predictions.max()))
+            axis.plot([low, high], [low, high], 'r--')
+            axis.set(xlabel='Actual price', ylabel='Predicted price', title='Validation predictions')
+            figure.tight_layout()
+            mlflow.log_figure(figure, 'validation_predictions.png')
+            plt.close(figure)
+            importance = shap_importance(model, X_validation)
+            figure, axis = plt.subplots(figsize=(8, 5))
+            importance.head(12).sort_values().plot.barh(ax=axis)
+            axis.set(xlabel='Mean absolute SHAP value', title='Feature contributions on validation data')
+            figure.tight_layout()
+            mlflow.log_figure(figure, 'shap_importance.png')
+            plt.close(figure)
+            mlflow.log_dict(importance.to_dict(), 'shap_importance.json')
             mlflow.log_dict({'group':GROUP, 'through_batch':batch, 'train_rows':len(train),
                 'validation_rows':len(validation), 'test_rows':len(test), 'training_reason':training_reason}, 'evaluation.json')
             info = mlflow.sklearn.log_model(model, name='model', serialization_format='cloudpickle',
                 signature=infer_signature(X_train.head(5), model.predict(X_train.head(5))))
             version = mlflow.register_model(info.model_uri, MODEL_NAME)
-            return {'batch':batch, 'model_version':str(version.version), 'run_id':run.info.run_id}
+            return {'batch':batch, 'model_version':str(version.version), 'run_id':run.info.run_id, 'train_rows':len(train)}
     finally:
         db.dispose()
 
@@ -92,13 +116,18 @@ def record_model_decision(result):
         with db.begin() as conn:
             params = {'g':GROUP,'b':result['batch'],'r':result['run_id'],'v':result['model_version'],
                       'c':result['candidate_mae'],'old':result['champion_mae'],
-                      'promote':result['promoted'],'reason':result['reason']}
-            conn.execute(text("""INSERT INTO audit.training_events(group_number,batch_number,mlflow_run_id,model_version,candidate_mae,champion_mae,promoted,reason)
-                VALUES(:g,:b,:r,:v,:c,:old,:promote,:reason) ON CONFLICT(group_number,batch_number) DO UPDATE SET
+                      'promote':result['promoted'],'reason':result['reason'], 'train_rows':result.get('train_rows')}
+            conn.execute(text("""INSERT INTO audit.training_events(group_number,batch_number,mlflow_run_id,model_version,candidate_mae,champion_mae,promoted,reason,train_rows)
+                VALUES(:g,:b,:r,:v,:c,:old,:promote,:reason,:train_rows) ON CONFLICT(group_number,batch_number) DO UPDATE SET
                 mlflow_run_id=excluded.mlflow_run_id,model_version=excluded.model_version,candidate_mae=excluded.candidate_mae,
-                champion_mae=excluded.champion_mae,promoted=excluded.promoted,reason=excluded.reason"""), params)
+                champion_mae=excluded.champion_mae,promoted=excluded.promoted,reason=excluded.reason,train_rows=excluded.train_rows"""), params)
             conn.execute(text("""UPDATE audit.batch_decisions SET model_version=:v,candidate_mae=:c,champion_mae=:old,promotion=:reason
                 WHERE group_number=:g AND batch_number=:b"""), params)
+        logger.info(
+            'Group %s batch %s: %s model %s, candidate MAE=%s, previous champion MAE=%s',
+            GROUP, result['batch'], 'promoted' if result['promoted'] else 'rejected',
+            result['model_version'], result['candidate_mae'], result['champion_mae'],
+        )
         return result
     finally:
         db.dispose()

@@ -10,7 +10,7 @@ sys.path.insert(0, '/opt/airflow/src')
      start_date=pendulum.datetime(2026, 1, 1, tz='UTC'), catchup=False,
      max_active_runs=1, default_args={'retries': 0}, tags=['project-3'])
 def property_pipeline():
-    @task
+    @task(retries=2)
     def initialize():
         from property_ml.ingestion import initialize as run
         run()
@@ -20,7 +20,7 @@ def property_pipeline():
         from property_ml.ingestion import fetch_and_store
         return fetch_and_store(get_current_context()['run_id'])
 
-    @task
+    @task(retries=2)
     def validate_and_clean(batch):
         from property_ml.ingestion import clean_batch
         return clean_batch(batch)

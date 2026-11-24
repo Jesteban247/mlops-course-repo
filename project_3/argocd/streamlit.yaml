@@ -1,0 +1,14 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: project-3-streamlit, namespace: argocd}
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Jesteban247/mlops-course-repo.git
+    targetRevision: main
+    path: project_3/k8s/streamlit
+  destination: {server: 'https://kubernetes.default.svc', namespace: project-3}
+  syncPolicy:
+    automated:
+      enabled: true
+    syncOptions: [CreateNamespace=true]
