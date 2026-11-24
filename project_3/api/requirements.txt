@@ -9,3 +9,4 @@ xgboost-cpu==3.4.1
 boto3==1.42.76
 psycopg2-binary==2.9.10
 SQLAlchemy==2.0.43
+prometheus-client==0.22.1

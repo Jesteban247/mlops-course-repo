@@ -41,3 +41,6 @@ CREATE TABLE IF NOT EXISTS audit.inference_events (
     request_id text NOT NULL, payload jsonb, prediction double precision,
     model_version text, pod text, status text NOT NULL, error text
 );
+
+ALTER TABLE audit.batch_decisions ADD COLUMN IF NOT EXISTS report_key text;
+ALTER TABLE audit.training_events ADD COLUMN IF NOT EXISTS train_rows integer;

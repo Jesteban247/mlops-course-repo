@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: property-ui, namespace: project-3}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: property-ui}}
+  template:
+    metadata: {labels: {app: property-ui}}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: nbam19}
+      containers:
+        - name: streamlit
+          image: docker.io/jesteban247/project-3-property-ui:latest
+          ports: [{name: http, containerPort: 8501}]
+          envFrom: [{secretRef: {name: project-3-settings}}]
+          env:
+            - {name: API_URL, value: 'http://property-api:8000'}
+            - {name: APP_DB_HOST, value: property-postgres}
+            - {name: MLFLOW_S3_ENDPOINT_URL, value: 'http://minio:9000'}
+          readinessProbe: {httpGet: {path: /_stcore/health, port: http}, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /_stcore/health, port: http}, initialDelaySeconds: 15, periodSeconds: 20}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: '1', memory: 768Mi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: property-ui, namespace: project-3}
+spec:
+  selector: {app: property-ui}
+  ports: [{name: http, port: 8501, targetPort: http}]

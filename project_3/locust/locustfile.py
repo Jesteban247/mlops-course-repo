@@ -1,0 +1,78 @@
+import json
+import os
+import time
+from collections import Counter
+from pathlib import Path
+
+import gevent
+from locust import HttpUser, between, events, task
+
+PAYLOAD = {'bed': 3, 'bath': 2, 'acre_lot': 0.23, 'house_size': 1837,
+           'brokered_by': 33714, 'street': 1758218, 'city': 'East Windsor',
+           'state': 'Connecticut', 'zip_code': 6016}
+pods = Counter()
+versions = Counter()
+measuring = False
+
+
+class PropertyUser(HttpUser):
+    wait_time = between(0.1, 0.5)
+
+    @task
+    def predict(self):
+        with self.client.post('/predict', json=PAYLOAD, headers={'Connection': 'close'},
+                              timeout=30, catch_response=True) as response:
+            if response.status_code != 200:
+                response.failure(f'HTTP {response.status_code}')
+                return
+            try:
+                data = response.json()
+                if not all(key in data for key in ('prediction', 'pod', 'model_version')):
+                    raise ValueError('Missing prediction, pod or model version')
+                if measuring:
+                    pods[str(data['pod'])] += 1
+                    versions[str(data['model_version'])] += 1
+            except ValueError as exc:
+                response.failure(str(exc))
+
+
+@events.init.add_listener
+def configure_experiment(environment, **kwargs):
+    prefix = os.getenv('LOCUST_RESULT_PREFIX')
+    if not prefix:
+        return
+    def measure(user_count):
+        global measuring
+        warmup = int(os.environ['LOCUST_WARMUP'])
+        duration = int(os.environ['LOCUST_DURATION'])
+        print(f'All users started. Warm-up: {warmup}s; measurement: {duration}s.', flush=True)
+        gevent.sleep(warmup)
+        environment.stats.reset_all()
+        pods.clear()
+        versions.clear()
+        measuring = True
+        started = time.monotonic()
+        gevent.sleep(duration)
+        elapsed = time.monotonic() - started
+        measuring = False
+        stats = environment.stats.total
+        summary = {
+            'scenario': os.environ['LOCUST_SCENARIO'], 'users': user_count,
+            'spawn_rate': float(os.environ['LOCUST_SPAWN_RATE']), 'warmup_seconds': warmup,
+            'measurement_seconds': round(elapsed, 2), 'requests': stats.num_requests,
+            'failures': stats.num_failures, 'failure_percent': round(stats.fail_ratio * 100, 2),
+            'requests_per_second': round(stats.num_requests / elapsed, 2),
+            'mean_latency_ms': round(stats.avg_response_time, 2),
+            'p50_latency_ms': stats.get_response_time_percentile(.50),
+            'p95_latency_ms': stats.get_response_time_percentile(.95),
+            'p99_latency_ms': stats.get_response_time_percentile(.99),
+            'pod_responses': dict(pods), 'model_versions': dict(versions),
+        }
+        Path(prefix + '_summary.json').write_text(json.dumps(summary, indent=2) + '\n')
+        print(json.dumps(summary, indent=2), flush=True)
+        environment.runner.quit()
+
+    def start_measurement(user_count, **kwargs):
+        gevent.spawn(measure, user_count)
+
+    environment.events.spawning_complete.add_listener(start_measurement)

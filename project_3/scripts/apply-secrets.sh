@@ -10,6 +10,22 @@ if [ ! -s project_3/.env ]; then
   exit 1
 fi
 
+python3 - <<'PYTHON'
+from pathlib import Path
+import secrets
+path = Path('project_3/.env')
+content = path.read_text()
+keys = {line.split('=', 1)[0] for line in content.splitlines() if '=' in line}
+additions = []
+if 'GRAFANA_USERNAME' not in keys:
+    additions.append('GRAFANA_USERNAME=admin')
+if 'GRAFANA_PASSWORD' not in keys:
+    additions.append('GRAFANA_PASSWORD=' + secrets.token_urlsafe(24))
+if additions:
+    with path.open('a') as env:
+        env.write('\n' + '\n'.join(additions) + '\n')
+PYTHON
+
 set -a
 . project_3/.env
 set +a
@@ -23,7 +39,7 @@ set +a
 umask 077
 PROJECT3_ENV_FILE="$(mktemp)"
 trap 'rm -f "$PROJECT3_ENV_FILE"' EXIT
-awk -F= '$1 != "CODE_VERSION" {print}' project_3/.env > "$PROJECT3_ENV_FILE"
+awk -F= '$1 != "CODE_VERSION" && $1 !~ /^ARGOCD_/ {print}' project_3/.env > "$PROJECT3_ENV_FILE"
 PROJECT3_CODE_VERSION="$(git rev-parse HEAD)"
 if [ -n "$(git status --porcelain -- project_3/src project_3/dags project_3/sql)" ]; then
   PROJECT3_CODE_VERSION="${PROJECT3_CODE_VERSION}-dirty"
