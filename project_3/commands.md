@@ -341,54 +341,52 @@ The Locust load test runs on a local computer outside the cluster nodes. The tes
 kubectl get hpa -n project-3 -w
 ```
 
-## 14. Publish and prepare the checkout — NBAM07
+## 14. Publish the tested changes — NBAM07
 
-After local testing, create a branch if the changes are still on `main`. Use your existing branch if you already have one.
+Create a branch for the local changes, stage Project 3 including the evidence, and review the staged files. If a branch already exists, use that branch and skip `git switch -c`.
 
 ```bash
 cd /home/estudiante/mlops-course-repo
-git status --short
 git switch -c project-3-clean-install
+git add -A -- project_3 .github/workflows/project-3-ci.yml
+git diff --cached --stat
 ```
 
-For the current tracked code and runbook changes, review the staged files before committing.
+Check that `project_3/evidence/` is staged and that screenshots and terminal logs contain no credentials. Then commit and push.
 
 ```bash
-git add -u -- project_3 .github/workflows/project-3-ci.yml
-git diff --cached --stat
-git commit -m "Prepare Project 3 for a clean GitOps install"
+git commit -m "Prepare Project 3 for deployment and add evidence" &&
 git push -u origin HEAD
 ```
 
-Open a pull request to `main`. Merge after the tests pass and the image bot updates the API and Streamlit manifests for any changed image inputs. Confirm both images are published in Docker Hub, then update the checkout used by Airflow.
+Open the PR to `main` on GitHub. Wait for the tests and image publishing to pass before merging. After the PR is merged, update the checkout used by Airflow and delete the local branch.
 
 ```bash
-cd /home/estudiante/mlops-course-repo
-git switch main && git pull --ff-only origin main
-git status --short
-git rev-parse HEAD
-awk '$1 == "image:" {print $2}' project_3/k8s/api/api.yaml project_3/k8s/streamlit/streamlit.yaml
+git switch main &&
+git pull --ff-only origin main &&
+git branch -d project-3-clean-install &&
+git status --short --branch
 ```
 
-## 15. Argo CD applications — NBAM07
+## 15. Enable Argo CD sync — NBAM07
 
-After the PR is merged:
+After pulling the merged `main`, register the API application. Argo CD automatically syncs the API Deployment, Service, and HPA from `main`. Manage the remaining workloads with the local deployment commands in steps 8, 9, and 11. After publishing a Streamlit change, apply its versioned manifest from the updated checkout.
 
 ```bash
-cd /home/estudiante/mlops-course-repo && \
-export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml" && \
-bash project_3/scripts/apply-secrets.sh && \
-kubectl apply -f project_3/argocd/ && \
-kubectl get applications -n argocd
+cd /home/estudiante/mlops-course-repo &&
+export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml" &&
+kubectl apply -f project_3/argocd/api.yaml
 ```
 
-Wait for the four applications to become `Synced` and `Healthy`. Verify that the API and Streamlit now use the published images, and repeat the prediction check from step 13.
+Open the Argo CD UI from step 13 and check that `project-3-api` becomes `Synced` and `Healthy`. Verify that it uses the published image and repeat the prediction check from step 13.
 
-For the autosync demo, change the Streamlit CPU request from `100m` to `150m` in `project_3/k8s/streamlit/streamlit.yaml` through a second PR. After merging, refresh the application and check **History and Rollback** for the revision. Verify on NBAM07.
+### Verify autosync and collect evidence
+
+For the autosync demo, change the API Deployment CPU request in `project_3/k8s/api/api.yaml` through a second PR. The HPA uses this request when calculating CPU utilization. After merging, check the revision in Argo CD under **History and Rollback** and verify the rollout on NBAM07.
 
 ```bash
-kubectl rollout status deployment/property-ui -n project-3 --timeout=10m
-kubectl get deployment property-ui -n project-3 -o jsonpath='{.spec.template.spec.containers[0].resources.requests.cpu}{"\n"}'
+kubectl rollout status deployment/property-api -n project-3 --timeout=10m
+kubectl get deployment property-api -n project-3 -o jsonpath='{.spec.template.spec.containers[0].resources.requests.cpu}{"\n"}'
 ```
 
 Run these checks after the first model is promoted. Use Jupyter notebook 09 for PostgreSQL evidence.
