@@ -24,7 +24,7 @@ curl -f http://127.0.0.1:18001/health
 curl -f http://127.0.0.1:18001/ready
 ```
 
-`/ready` must succeed before testing predictions.
+Before testing predictions, check that `/ready` returns a model version. A `null` version means the API is waiting for a champion.
 
 ## 3. Conda environment — your computer
 
@@ -76,7 +76,7 @@ Restore autoscaling after fixed-pod tests:
 
 ```bash
 kubectl patch hpa property-api -n project-3 --type merge -p '{"spec":{"minReplicas":1,"maxReplicas":3}}'
-kubectl get hpa,pods -n project-3 -w
+kubectl get hpa -n project-3 -w
 ```
 
 Wait until the expected pods are ready before starting each experiment. For the three-pod scenario use `--replicas 3`; for autoscaling use `--replicas auto`. Open the Project 3 API dashboard in Grafana to compare requests by pod, latency, errors, and resources.

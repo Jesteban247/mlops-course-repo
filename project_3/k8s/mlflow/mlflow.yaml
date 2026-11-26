@@ -3,6 +3,7 @@ kind: Deployment
 metadata: {name: mlflow, namespace: project-3}
 spec:
   replicas: 1
+  progressDeadlineSeconds: 1200
   selector: {matchLabels: {app: mlflow}}
   template:
     metadata: {labels: {app: mlflow}}

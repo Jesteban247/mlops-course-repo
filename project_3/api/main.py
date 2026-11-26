@@ -142,9 +142,12 @@ def health():
 def ready():
     with _state_lock:
         state = _state
-    if state is None:
-        raise HTTPException(503, 'No MLflow champion loaded')
-    return {'status':'ready', 'model':MODEL_NAME, 'version':state['version'], 'pod':POD_NAME}
+    return {
+        'status': 'ready',
+        'model': MODEL_NAME,
+        'version': state['version'] if state else None,
+        'pod': POD_NAME,
+    }
 
 
 @app.post('/predict')

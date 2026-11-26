@@ -1,7 +1,5 @@
 # Project 3 commands
 
-For local testing, follow sections 1–13 before opening the PR. For a fresh deployment after the PR is merged, follow sections 2–6, 10, and 15, then open the services in section 13. This path uses the published images through Argo CD.
-
 ## 1. Build local test images — NBAM07
 
 ```bash
@@ -13,15 +11,6 @@ docker save -o project_3/data/project-3-test-images.tar project-3-property-api:l
 tar -tf project_3/data/project-3-test-images.tar >/dev/null
 ```
 
-After the archive is saved, free the local images and Docker build cache. This deletes the Docker build cache for all projects.
-
-```bash
-docker image rm project-3-property-api:local-test project-3-property-ui:local-test
-docker image rm project-3-property-api:local-test-20261123 project-3-property-ui:local-test-20261123 project-3-property-api:local 2>/dev/null || true
-docker builder prune -af
-df -h /var
-```
-
 ## 2. K3s server — NBAM07
 
 ```bash
@@ -30,8 +19,6 @@ df -h /var
 command -v k3s || true
 systemctl is-active k3s || true
 ```
-
-Install only if the server is not already installed:
 
 ```bash
 POD_CIDR='10.42.0.0/16'
@@ -44,7 +31,6 @@ curl -sfL https://get.k3s.io | sudo env \
 ```
 
 ```bash
-sudo systemctl enable --now k3s
 mkdir -p "$HOME/.kube"
 sudo install -m 600 -o "$(id -u)" -g "$(id -g)" /etc/rancher/k3s/k3s.yaml "$HOME/.kube/project-3-k3s.yaml"
 export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
@@ -102,25 +88,25 @@ sudo firewall-cmd --reload
 ```
 
 ```bash
-timeout 5 bash -c '</dev/tcp/10.43.97.96/6443'
-read -rs -p 'K3s join token: ' PROJECT3_JOIN_TOKEN; echo
-set -o pipefail
-curl -sfL https://get.k3s.io | sudo env \
-  INSTALL_K3S_VERSION='v1.36.5+k3s1' \
-  K3S_URL='https://10.43.97.96:6443' K3S_TOKEN="$PROJECT3_JOIN_TOKEN" sh -
-unset PROJECT3_JOIN_TOKEN
-```
-
-```bash
-sudo systemctl enable --now k3s-agent
-sudo systemctl status k3s-agent --no-pager
+(
+  set -euo pipefail
+  df -h /var
+  timeout 5 bash -c '</dev/tcp/10.43.97.96/6443'
+  read -rs -p 'K3s join token: ' PROJECT3_JOIN_TOKEN
+  echo
+  test -n "$PROJECT3_JOIN_TOKEN"
+  curl -sfL https://get.k3s.io | sudo env \
+    INSTALL_K3S_VERSION='v1.36.5+k3s1' \
+    K3S_URL='https://10.43.97.96:6443' K3S_TOKEN="$PROJECT3_JOIN_TOKEN" sh -
+  systemctl is-active k3s-agent
+)
 ```
 
 ## 5. Shared files — NBAM07
 
 ```bash
 export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
-kubectl get nodes -o wide
+kubectl wait --for=condition=Ready node/nbam19 --timeout=5m
 cd /home/estudiante/mlops-course-repo
 rpm -q nfs-utils >/dev/null 2>&1 || sudo dnf install -y nfs-utils
 rpm -q acl >/dev/null 2>&1 || sudo dnf install -y acl
@@ -158,15 +144,33 @@ sudo umount /mnt/project3-nfs-check
 sudo rmdir /mnt/project3-nfs-check
 ```
 
-## 7. Import images — NBAM19
+## 7. Import local test images — NBAM19
+
+Copy the archive from NFS to local storage before importing. Both expected image tags should print at the end.
 
 ```bash
-[ "$(hostname -s | tr '[:upper:]' '[:lower:]')" = nbam19 ] && \
-sudo mkdir -p /mnt/project3-image && \
-sudo mount -t nfs -o vers=4.2 10.43.97.96:/home/estudiante/mlops-course-repo/project_3 /mnt/project3-image && \
-sudo /usr/local/bin/k3s ctr -n k8s.io images import /mnt/project3-image/data/project-3-test-images.tar && \
-sudo umount /mnt/project3-image && \
-sudo rmdir /mnt/project3-image
+(
+  set -euo pipefail
+  [ "$(hostname -s | tr '[:upper:]' '[:lower:]')" = nbam19 ]
+  df -h /var /tmp
+  project3_archive="$(mktemp /tmp/project3-images.XXXXXX.tar)"
+  trap 'rm -f "$project3_archive"' EXIT
+  sudo mkdir -p /mnt/project3-image
+  project3_export='10.43.97.96:/home/estudiante/mlops-course-repo/project_3'
+  if ! mountpoint -q /mnt/project3-image; then
+    sudo mount -t nfs -o vers=4.2 "$project3_export" /mnt/project3-image
+  fi
+  test "$(findmnt -n -M /mnt/project3-image -o SOURCE)" = "$project3_export"
+  trap 'sudo umount /mnt/project3-image && sudo rmdir /mnt/project3-image; rm -f "$project3_archive"' EXIT
+  cp /mnt/project3-image/data/project-3-test-images.tar "$project3_archive"
+  sudo umount /mnt/project3-image
+  trap 'rm -f "$project3_archive"' EXIT
+  sudo rmdir /mnt/project3-image
+  sudo /usr/local/bin/k3s ctr -n k8s.io images import "$project3_archive"
+  project3_images="$(sudo /usr/local/bin/k3s ctr -n k8s.io images ls -q)"
+  grep -Fx 'docker.io/library/project-3-property-api:local-test' <<< "$project3_images"
+  grep -Fx 'docker.io/library/project-3-property-ui:local-test' <<< "$project3_images"
+)
 ```
 
 ## 8. Secrets and local services — NBAM07
@@ -178,9 +182,10 @@ bash project_3/scripts/apply-secrets.sh && \
 kubectl apply -k project_3/k8s && \
 kubectl rollout status deployment/property-postgres -n project-3 --timeout=10m && \
 kubectl rollout status deployment/airflow-postgres -n project-3 --timeout=10m && \
+kubectl rollout status deployment/mlflow-postgres -n project-3 --timeout=10m && \
 kubectl rollout status deployment/minio -n project-3 --timeout=10m && \
 kubectl wait --for=condition=complete job/create-mlflow-bucket -n project-3 --timeout=10m && \
-kubectl rollout status deployment/mlflow -n project-3 --timeout=10m && \
+kubectl rollout status deployment/mlflow -n project-3 --timeout=20m && \
 kubectl exec -i -n project-3 deployment/property-postgres -- sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < project_3/sql/01_schema.sql
 ```
 
@@ -207,19 +212,20 @@ kubectl rollout status deployment/airflow-api-server -n project-3 --timeout=20m
 ## 10. Argo CD — NBAM07
 
 ```bash
+set -o pipefail
 export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
-mkdir -p "$HOME/.local/share/project-3"
+mkdir -p "$HOME/.local/share/project-3" && \
 curl -fL --retry 3 https://codeload.github.com/argoproj/argo-cd/tar.gz/refs/tags/stable -o /tmp/project-3-argocd-stable.tar.gz && \
   tar -xOzf /tmp/project-3-argocd-stable.tar.gz argo-cd-stable/manifests/install.yaml > "$HOME/.local/share/project-3/argocd-install.yaml" && \
-  test -s "$HOME/.local/share/project-3/argocd-install.yaml"
-kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply -n argocd --server-side --force-conflicts -f "$HOME/.local/share/project-3/argocd-install.yaml"
-kubectl rollout status deployment/argocd-server -n argocd --timeout=10m
-cd /home/estudiante/mlops-course-repo
+  test -s "$HOME/.local/share/project-3/argocd-install.yaml" && \
+kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f - && \
+kubectl apply -n argocd --server-side --force-conflicts -f "$HOME/.local/share/project-3/argocd-install.yaml" && \
+kubectl rollout status deployment/argocd-server -n argocd --timeout=10m && \
+kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=10m && \
+kubectl rollout status statefulset/argocd-application-controller -n argocd --timeout=10m && \
+cd /home/estudiante/mlops-course-repo && \
 python3 project_3/scripts/apply-argocd-login.py
 ```
-
-Register the applications in section 15 after merging the tested code into `main`.
 
 ## 11. Local API, Streamlit and autoscaling — NBAM07
 
@@ -231,25 +237,27 @@ sed -e 's|image: docker.io/.*/project-3-property-api:.*|image: project-3-propert
 
 ```bash
 sed 's|image: docker.io/.*/project-3-property-ui:.*|image: project-3-property-ui:local-test|' project_3/k8s/streamlit/streamlit.yaml | kubectl apply -f - && \
-kubectl apply -f project_3/k8s/api/hpa.yaml && \
-kubectl get pods,pvc,svc,hpa -n project-3 -o wide
+kubectl apply -f project_3/k8s/api/hpa.yaml
 ```
-
-The API becomes ready after the first successful DAG run creates a champion in MLflow.
 
 ## 12. Local status — NBAM07
 
 ```bash
+export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
+kubectl rollout status deployment/property-api -n project-3 --timeout=10m
 kubectl rollout status deployment/property-ui -n project-3 --timeout=10m
 kubectl rollout status deployment/prometheus -n project-3 --timeout=10m
 kubectl rollout status deployment/grafana -n project-3 --timeout=10m
 kubectl rollout status deployment/locust -n project-3 --timeout=10m
-kubectl rollout status deployment/jupyter -n project-3 --timeout=10m
+kubectl rollout status deployment/jupyter -n project-3 --timeout=20m
+```  
+ 
+```bash
 kubectl get pods,pvc,svc,hpa -n project-3 -o wide
 kubectl top nodes
 ```
 
-## 13. Service access and testing — NBAM07
+## 13. Service access and first pipeline run — NBAM07
 
 Run each port-forward in a separate terminal. Stop it with Ctrl+C.
 
@@ -266,8 +274,6 @@ Airflow — <http://localhost:8082> (`AIRFLOW_USERNAME`, `AIRFLOW_PASSWORD` in `
 export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
 kubectl port-forward -n project-3 svc/airflow-api-server 8082:8080
 ```
-
-Open Airflow and run `project_3_check_teacher_api`. If necessary and permitted, run `project_3_reset_teacher_batches`, then trigger `project_3_property_pipeline`. Each pipeline run consumes one batch.
 
 MLflow — <http://localhost:5000>:
 
@@ -301,6 +307,10 @@ kubectl port-forward -n project-3 svc/property-api 8000:8000
 cd /home/estudiante/mlops-course-repo
 curl -fsS http://127.0.0.1:8000/health; echo
 curl -fsS http://127.0.0.1:8000/ready; echo
+```
+
+```bash
+cd /home/estudiante/mlops-course-repo
 curl -fsS http://127.0.0.1:8000/predict -H 'Content-Type: application/json' --data-binary @project_3/api/example-request.json; echo
 ```
 
@@ -325,31 +335,39 @@ export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
 kubectl port-forward -n project-3 svc/grafana 3000:3000
 ```
 
-Locust runs locally; see [locust/README.md](locust/README.md).
+The Locust load test runs on a local computer outside the cluster nodes. The tester downloads the entire `project_3/locust` folder, opens it locally, and follows the [Locust setup and run instructions](locust/README.md) after verifying a prediction.
 
 ```bash
-kubectl get hpa,pods -n project-3 -w
+kubectl get hpa -n project-3 -w
 ```
 
-## 14. GitHub — NBAM07
+## 14. Publish and prepare the checkout — NBAM07
 
-After local testing:
+After local testing, create a branch if the changes are still on `main`. Use your existing branch if you already have one.
 
 ```bash
 cd /home/estudiante/mlops-course-repo
-git status
-git switch -c YOUR_BRANCH
-git add project_3 .github/workflows/project-3-ci.yml
-git diff --cached --stat
-git commit -m 'YOUR COMMIT MESSAGE'
-git push -u origin YOUR_BRANCH
+git status --short
+git switch -c project-3-clean-install
 ```
 
-Open a PR to `main`. Wait for GitHub Actions to publish the API and Streamlit images when their sources change. Verify the SHA tags in the bot commit and wait for the final checks before merging.
+For the current tracked code and runbook changes, review the staged files before committing.
 
 ```bash
+git add -u -- project_3 .github/workflows/project-3-ci.yml
+git diff --cached --stat
+git commit -m "Prepare Project 3 for a clean GitOps install"
+git push -u origin HEAD
+```
+
+Open a pull request to `main`. Merge after the tests pass and the image bot updates the API and Streamlit manifests for any changed image inputs. Confirm both images are published in Docker Hub, then update the checkout used by Airflow.
+
+```bash
+cd /home/estudiante/mlops-course-repo
 git switch main && git pull --ff-only origin main
-git branch -d YOUR_BRANCH
+git status --short
+git rev-parse HEAD
+awk '$1 == "image:" {print $2}' project_3/k8s/api/api.yaml project_3/k8s/streamlit/streamlit.yaml
 ```
 
 ## 15. Argo CD applications — NBAM07
@@ -364,7 +382,7 @@ kubectl apply -f project_3/argocd/ && \
 kubectl get applications -n argocd
 ```
 
-The four applications now sync automatically from `main`. Check **Details → Sync Policy → Automated**. On a fresh database, wait for Airflow and MLflow, then run the pipeline from section 13. The API becomes **Healthy** after loading the first promoted model. Use Argo CD for further Airflow deployment changes.
+Wait for the four applications to become `Synced` and `Healthy`. Verify that the API and Streamlit now use the published images, and repeat the prediction check from step 13.
 
 For the autosync demo, change the Streamlit CPU request from `100m` to `150m` in `project_3/k8s/streamlit/streamlit.yaml` through a second PR. After merging, refresh the application and check **History and Rollback** for the revision. Verify on NBAM07.
 
@@ -373,95 +391,113 @@ kubectl rollout status deployment/property-ui -n project-3 --timeout=10m
 kubectl get deployment property-ui -n project-3 -o jsonpath='{.spec.template.spec.containers[0].resources.requests.cpu}{"\n"}'
 ```
 
-## Final status and evidence — NBAM07
-
-Run after the first model has been promoted. Use notebook 09 in Jupyter for PostgreSQL evidence.
+Run these checks after the first model is promoted. Use Jupyter notebook 09 for PostgreSQL evidence.
 
 ```bash
 export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
 kubectl get nodes -o wide
 kubectl get deploy,sts,pods,jobs,pvc,svc,hpa -n project-3 -o wide
+kubectl get pv
+kubectl get events -n project-3 --sort-by=.metadata.creationTimestamp
 kubectl get applications,pods -n argocd
 kubectl get deploy property-api property-ui -n project-3 -o custom-columns=NAME:.metadata.name,IMAGE:.spec.template.spec.containers[0].image
 kubectl top pods -n project-3 --containers
 kubectl logs -n project-3 deployment/property-api --tail=30
 ```
 
-## 16. Project cleanup — NBAM07
+## Maintenance after installation — NBAM07
 
-This removes the project workloads and their database/MinIO data.
+Airflow mounts the checkout on NBAM07. After updating training code, reapply the Secrets from the same checkout and restart the scheduler before triggering another batch so the run logs the new commit.
 
 ```bash
-export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
-kubectl delete application project-3-streamlit project-3-api project-3-airflow project-3-core -n argocd --ignore-not-found
-kubectl delete namespace project-3 --wait --ignore-not-found
+cd /home/estudiante/mlops-course-repo && \
+export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml" && \
+kubectl get statefulset/airflow-scheduler -n project-3 && \
+bash project_3/scripts/apply-secrets.sh && \
+kubectl rollout restart statefulset/airflow-scheduler -n project-3 && \
+kubectl rollout status statefulset/airflow-scheduler -n project-3 --timeout=20m
 ```
 
-## 17. Full cluster cleanup — NBAM19
+## 16. Full cluster cleanup — NBAM19
 
-**This uninstalls the K3s worker and removes unused Docker images and build cache.**
+**This deletes the K3s worker and its local persistent volumes.**
 
 ```bash
-sudo /usr/local/bin/k3s-agent-uninstall.sh
-if [ -f "$HOME/.local/state/project_3/nfs-client-selinux" ]; then
-  sudo setsebool -P virt_use_nfs off
-fi
-if [ -f "$HOME/.local/state/project_3/firewall-zone" ] && [ -f "$HOME/.local/state/project_3/firewall-rules" ]; then
-  ZONE="$(cat "$HOME/.local/state/project_3/firewall-zone")"
-  while IFS= read -r RULE; do sudo firewall-cmd --permanent --zone="$ZONE" --remove-rich-rule="$RULE"; done < "$HOME/.local/state/project_3/firewall-rules"
-fi
-if [ -f "$HOME/.local/state/project_3/firewall-sources" ]; then
-  while IFS= read -r CIDR; do sudo firewall-cmd --permanent --zone=trusted --remove-source="$CIDR"; done < "$HOME/.local/state/project_3/firewall-sources"
-fi
-sudo firewall-cmd --reload
-rm -rf "$HOME/.local/state/project_3"
-if command -v docker >/dev/null 2>&1; then
-  docker image prune -a -f
-  docker builder prune -a -f
-  docker image ls
-fi
-df -h /var
+(
+  set -euo pipefail
+  [ "$(hostname -s | tr '[:upper:]' '[:lower:]')" = nbam19 ]
+  for PROJECT3_MOUNT in /mnt/project3-image /mnt/project3-nfs-check; do
+    if mountpoint -q "$PROJECT3_MOUNT"; then sudo umount "$PROJECT3_MOUNT"; fi
+  done
+  sudo rmdir /mnt/project3-image /mnt/project3-nfs-check 2>/dev/null || true
+  if [ -x /usr/local/bin/k3s-agent-uninstall.sh ]; then sudo /usr/local/bin/k3s-agent-uninstall.sh; fi
+  if [ -f "$HOME/.local/state/project_3/nfs-client-selinux" ]; then
+    sudo setsebool -P virt_use_nfs off
+  fi
+  if [ -f "$HOME/.local/state/project_3/firewall-zone" ] && [ -f "$HOME/.local/state/project_3/firewall-rules" ]; then
+    ZONE="$(cat "$HOME/.local/state/project_3/firewall-zone")"
+    while IFS= read -r RULE; do sudo firewall-cmd --permanent --zone="$ZONE" --remove-rich-rule="$RULE"; done < "$HOME/.local/state/project_3/firewall-rules"
+  fi
+  if [ -f "$HOME/.local/state/project_3/firewall-sources" ]; then
+    while IFS= read -r CIDR; do sudo firewall-cmd --permanent --zone=trusted --remove-source="$CIDR"; done < "$HOME/.local/state/project_3/firewall-sources"
+  fi
+  sudo firewall-cmd --reload
+  rm -rf "$HOME/.local/state/project_3"
+)
 ```
 
-## 18. Full cluster cleanup — NBAM07
+## 17. Full cluster cleanup — NBAM07
 
-**This uninstalls the entire K3s server, including Argo CD and other cluster workloads, and removes unused Docker images and build cache.**
+**This deletes the K3s cluster and its local persistent volumes.**
 
 ```bash
-sudo /usr/local/bin/k3s-uninstall.sh
-sudo rm -f /etc/exports.d/project3.exports
-sudo exportfs -ra
-sudo setfacl -R -x u:50000 /home/estudiante/mlops-course-repo/project_3/data
-find /home/estudiante/mlops-course-repo/project_3/data -type d -exec sudo setfacl -x d:u:50000,d:u:1001 {} +
-if [ -f "$HOME/.local/state/project_3/nfs-export-selinux" ]; then
-  sudo setsebool -P nfs_export_all_rw off
-fi
-if [ -f "$HOME/.local/state/project_3/firewall-zone" ] && [ -f "$HOME/.local/state/project_3/firewall-rules" ]; then
-  ZONE="$(cat "$HOME/.local/state/project_3/firewall-zone")"
-  while IFS= read -r RULE; do sudo firewall-cmd --permanent --zone="$ZONE" --remove-rich-rule="$RULE"; done < "$HOME/.local/state/project_3/firewall-rules"
-fi
-if [ -f "$HOME/.local/state/project_3/firewall-sources" ]; then
-  while IFS= read -r CIDR; do sudo firewall-cmd --permanent --zone=trusted --remove-source="$CIDR"; done < "$HOME/.local/state/project_3/firewall-sources"
-fi
-sudo firewall-cmd --reload
-rm -rf "$HOME/.local/state/project_3"
-rm -f "$HOME/.local/share/project-3/argocd-install.yaml" "$HOME/.local/share/project-3/helm"
-rmdir "$HOME/.local/share/project-3" 2>/dev/null || true
-rm -f "$HOME/.kube/project-3-k3s.yaml" /tmp/project-3-argocd-stable.tar.gz
-rm -f /tmp/project-3-helm.tar.gz /tmp/linux-amd64/helm
-rmdir /tmp/linux-amd64 2>/dev/null || true
-rm -f /home/estudiante/mlops-course-repo/project_3/data/{project-3-test-images.tar,project-3-property-api-local.tar}
-if command -v docker >/dev/null 2>&1; then
-  docker image prune -a -f
-  docker builder prune -a -f
-  docker system df
-fi
-df -h /var
-unset KUBECONFIG
+(
+  set -euo pipefail
+  [ "$(hostname -s | tr '[:upper:]' '[:lower:]')" = nbam07 ]
+  if [ -x /usr/local/bin/k3s-uninstall.sh ]; then sudo /usr/local/bin/k3s-uninstall.sh; fi
+  sudo rm -f /etc/exports.d/project3.exports
+  sudo exportfs -ra
+  sudo setfacl -R -x u:50000 /home/estudiante/mlops-course-repo/project_3/data
+  find /home/estudiante/mlops-course-repo/project_3/data -type d -exec sudo setfacl -x d:u:50000,d:u:1001 {} +
+  if [ -f "$HOME/.local/state/project_3/nfs-export-selinux" ]; then
+    sudo setsebool -P nfs_export_all_rw off
+  fi
+  if [ -f "$HOME/.local/state/project_3/firewall-zone" ] && [ -f "$HOME/.local/state/project_3/firewall-rules" ]; then
+    ZONE="$(cat "$HOME/.local/state/project_3/firewall-zone")"
+    while IFS= read -r RULE; do sudo firewall-cmd --permanent --zone="$ZONE" --remove-rich-rule="$RULE"; done < "$HOME/.local/state/project_3/firewall-rules"
+  fi
+  if [ -f "$HOME/.local/state/project_3/firewall-sources" ]; then
+    while IFS= read -r CIDR; do sudo firewall-cmd --permanent --zone=trusted --remove-source="$CIDR"; done < "$HOME/.local/state/project_3/firewall-sources"
+  fi
+  sudo firewall-cmd --reload
+  rm -rf "$HOME/.local/state/project_3"
+  rm -f "$HOME/.local/share/project-3/argocd-install.yaml"
+  rmdir "$HOME/.local/share/project-3" 2>/dev/null || true
+  rm -f "$HOME/.kube/project-3-k3s.yaml" /tmp/project-3-argocd-stable.tar.gz
+  rm -f /home/estudiante/mlops-course-repo/project_3/data/{project-3-test-images.tar,project-3-property-api-local.tar}
+) && unset KUBECONFIG
 ```
 
-The repository, `.env`, saved exploration batches, and system packages remain. For a fresh run, the old Airflow staging directory can be removed after preserving any files needed for evidence.
+## 18. Optional Docker cleanup and disk check — NBAM19 and NBAM07
+
+Run this on each node after K3s cleanup if you want to clear its local Docker daemon. It removes **all** Docker containers on that node, including running containers, then prunes images, unused networks, volumes, and build cache. Save any Docker data needed by other projects first.
 
 ```bash
-sudo rm -rf /home/estudiante/mlops-course-repo/project_3/data/ingestion
+(
+  set -euo pipefail
+  if command -v docker >/dev/null 2>&1 && [ -S /var/run/docker.sock ]; then
+    project3_docker=(sudo docker --host unix:///var/run/docker.sock)
+    "${project3_docker[@]}" ps -aq | xargs -r "${project3_docker[@]}" rm -f
+    "${project3_docker[@]}" system prune --all --force
+    "${project3_docker[@]}" volume prune --all --force
+    "${project3_docker[@]}" system df
+  fi
+  df -h / /var /tmp
+)
+```
+
+To check disk space without removing anything:
+
+```bash
+df -h / /var /tmp
 ```

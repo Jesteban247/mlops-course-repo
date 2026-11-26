@@ -31,9 +31,12 @@ def main():
     try:
         with urlopen(args.host.rstrip('/') + '/ready', timeout=10) as response:
             ready = json.load(response)
-        print(f"API ready: model version {ready.get('version')}", flush=True)
     except Exception as exc:
-        sys.exit(f'API is not ready: {exc}')
+        sys.exit(f'Could not check API readiness: {exc}')
+    version = ready.get('version')
+    if version is None:
+        sys.exit('The API is waiting for a champion model. Run the training pipeline before load testing.')
+    print(f'API ready: model version {version}', flush=True)
 
     results = ROOT / 'results'
     results.mkdir(exist_ok=True)
