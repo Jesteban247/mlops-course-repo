@@ -1,0 +1,508 @@
+1. Build local test images:
+
+[estudiante@NBAM07 mlops-course-repo]$ cd /home/estudiante/mlops-course-repo && \
+mkdir -p project_3/data && \
+docker build -f project_3/api/Dockerfile -t project-3-property-api:local-test project_3 && \
+docker build -f project_3/streamlit/Dockerfile -t project-3-property-ui:local-test project_3 && \
+docker save -o project_3/data/project-3-test-images.tar project-3-property-api:local-test project-3-property-ui:local-test && \
+tar -tf project_3/data/project-3-test-images.tar >/dev/null
+[+] Building 293.0s (12/12) FINISHED                                                                                         docker:default
+ => [internal] load build definition from Dockerfile                                                                                   0.2s
+ => => transferring dockerfile: 417B                                                                                                   0.0s
+ => [internal] load metadata for docker.io/library/python:3.12-slim                                                                    1.6s
+ => [auth] library/python:pull token for registry-1.docker.io                                                                          0.0s
+ => [internal] load .dockerignore                                                                                                      0.1s
+ => => transferring context: 154B                                                                                                      0.0s
+ => [1/6] FROM docker.io/library/python:3.12-slim@sha256:191083cdf6c7bda8c76158983163ead5d5cf7b77cf3033e805bb0f5296f51b4b              6.3s
+ => => resolve docker.io/library/python:3.12-slim@sha256:191083cdf6c7bda8c76158983163ead5d5cf7b77cf3033e805bb0f5296f51b4b              0.1s
+ => => sha256:286d8c291daa64125703b22c3d009462bcae0b630eaa16ad5b934502c4917233 248B / 248B                                             0.1s
+ => => sha256:e3e428093f5e80791498526d73a46eabf0e69575dc10897cf47aa99120e41712 12.12MB / 12.12MB                                       0.6s
+ => => sha256:30cf67d7101c07c55eef20970bc403fbde5f8600c2c4c38b4881a2da4fffb0b6 1.29MB / 1.29MB                                         0.4s
+ => => sha256:40748add9f4f6f944f334cbfc286590d6e93f60fb06f6ee7ffa1b894080ad861 29.84MB / 29.84MB                                       1.1s
+ => => extracting sha256:40748add9f4f6f944f334cbfc286590d6e93f60fb06f6ee7ffa1b894080ad861                                              2.8s
+ => => extracting sha256:30cf67d7101c07c55eef20970bc403fbde5f8600c2c4c38b4881a2da4fffb0b6                                              0.3s
+ => => extracting sha256:e3e428093f5e80791498526d73a46eabf0e69575dc10897cf47aa99120e41712                                              1.6s
+ => => extracting sha256:286d8c291daa64125703b22c3d009462bcae0b630eaa16ad5b934502c4917233                                              0.1s
+ => [internal] load build context                                                                                                      0.2s
+ => => transferring context: 181.28kB                                                                                                  0.0s
+ => [2/6] WORKDIR /app                                                                                                                 0.9s
+ => [3/6] COPY api/requirements.txt /app/requirements.txt                                                                              0.1s
+ => [4/6] RUN pip install --no-cache-dir -r requirements.txt                                                                         139.6s
+ => [5/6] COPY api /app/api                                                                                                            0.6s 
+ => [6/6] COPY src/property_ml /app/property_ml                                                                                        0.1s 
+ => exporting to image                                                                                                               142.5s 
+ => => exporting layers                                                                                                              111.9s 
+ => => exporting manifest sha256:8a5cccac1125fef5a78c8b7aebbf8b30fe2db44a31ef8cfad718f7faf0fea78a                                      0.0s 
+ => => exporting config sha256:549f36e84e5f07ca6445a80cda2f24dabf18de3efa93394c99564df35cca6b24                                        0.1s 
+ => => exporting attestation manifest sha256:bd19d1836329f2f92757e9eac5067b8add14a68d9e1cd5dc14d978f95b768b32                          0.0s
+ => => exporting manifest list sha256:b6237cdcb64ef3e7240ccd0f12729108fc1c590c77f7f55ffe04938cd58d8e01                                 0.0s
+ => => naming to docker.io/library/project-3-property-api:local-test                                                                   0.0s
+ => => unpacking to docker.io/library/project-3-property-api:local-test                                                               30.2s
+[+] Building 136.2s (11/11) FINISHED                                                                                         docker:default
+ => [internal] load build definition from Dockerfile                                                                                   0.0s
+ => => transferring dockerfile: 370B                                                                                                   0.0s
+ => [internal] load metadata for docker.io/library/python:3.12-slim                                                                    0.9s
+ => [auth] library/python:pull token for registry-1.docker.io                                                                          0.0s
+ => [internal] load .dockerignore                                                                                                      0.0s
+ => => transferring context: 154B                                                                                                      0.0s
+ => [1/5] FROM docker.io/library/python:3.12-slim@sha256:191083cdf6c7bda8c76158983163ead5d5cf7b77cf3033e805bb0f5296f51b4b              0.1s
+ => => resolve docker.io/library/python:3.12-slim@sha256:191083cdf6c7bda8c76158983163ead5d5cf7b77cf3033e805bb0f5296f51b4b              0.1s
+ => [internal] load build context                                                                                                      0.0s
+ => => transferring context: 7.87kB                                                                                                    0.0s
+ => CACHED [2/5] WORKDIR /app                                                                                                          0.0s
+ => [3/5] COPY streamlit/requirements.txt .                                                                                            1.1s
+ => [4/5] RUN pip install --no-cache-dir -r requirements.txt                                                                          50.4s
+ => [5/5] COPY streamlit/app.py .                                                                                                      0.3s 
+ => exporting to image                                                                                                                82.8s 
+ => => exporting layers                                                                                                               65.6s 
+ => => exporting manifest sha256:cd6c18b68e0392f80f8243b25670b9b4714af975ca1cc8816edc0b75cfac0546                                      0.1s 
+ => => exporting config sha256:847e1804c590b491289de415401a48f6136ade2a4d2d0f16210ad678e887d563                                        0.1s 
+ => => exporting attestation manifest sha256:c18178ab78a8ed2289e4723f9f77ba8cfeaff486ff79241f25cb60735ad5c974                          0.1s 
+ => => exporting manifest list sha256:d06f177645477c0a77e8df0b73fd0a72527bafcfa6d41f466cffc5c4cf021a48                                 0.1s
+ => => naming to docker.io/library/project-3-property-ui:local-test                                                                    0.0s
+ => => unpacking to docker.io/library/project-3-property-ui:local-test                                                                16.7s
+
+####################################################################################################
+
+2. K3s server:
+
+[estudiante@NBAM07 mlops-course-repo]$ ip -4 route
+df -h /var
+command -v k3s || true
+systemctl is-active k3s || true
+default via 10.43.96.1 dev ens192 proto static metric 100 
+10.43.96.0/20 dev ens192 proto kernel scope link src 10.43.97.96 metric 100 
+172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 linkdown 
+Filesystem                          Size  Used Avail Use% Mounted on
+/dev/mapper/rl_plantillarocky9-var   15G  4.2G   11G  28% /var
+inactive
+[estudiante@NBAM07 mlops-course-repo]$ POD_CIDR='10.42.0.0/16'
+SERVICE_CIDR='10.44.0.0/16'
+SERVICE_DNS='10.44.0.10'
+set -o pipefail
+curl -sfL https://get.k3s.io | sudo env \
+  INSTALL_K3S_VERSION='v1.36.5+k3s1' \
+  INSTALL_K3S_EXEC="server --cluster-cidr=$POD_CIDR --service-cidr=$SERVICE_CIDR --cluster-dns=$SERVICE_DNS" sh -
+[sudo] password for estudiante: 
+[INFO]  Using v1.36.5+k3s1 as release
+[INFO]  Downloading hash https://github.com/k3s-io/k3s/releases/download/v1.36.5%2Bk3s1/sha256sum-amd64.txt
+[INFO]  Downloading binary https://github.com/k3s-io/k3s/releases/download/v1.36.5%2Bk3s1/k3s
+[INFO]  Verifying binary download
+[INFO]  Installing k3s to /usr/local/bin/k3s
+[INFO]  Finding available k3s-selinux versions
+Rancher K3s Common (stable)                                                                                                                                                                  7.1 kB/s | 2.9 kB     00:00    
+Dependencies resolved.
+=============================================================================================================================================================================================================================
+ Package                                            Architecture                                  Version                                             Repository                                                        Size
+=============================================================================================================================================================================================================================
+Installing:
+ k3s-selinux                                        noarch                                        1.6-1.el9                                           rancher-k3s-common-stable                                         22 k
+
+Transaction Summary
+=============================================================================================================================================================================================================================
+Install  1 Package
+
+Total download size: 22 k
+Installed size: 96 k
+Downloading Packages:
+k3s-selinux-1.6-1.el9.noarch.rpm                                                                                                                                                              58 kB/s |  22 kB     00:00    
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Total                                                                                                                                                                                         57 kB/s |  22 kB     00:00     
+Running transaction check
+Transaction check succeeded.
+Running transaction test
+Transaction test succeeded.
+Running transaction
+  Preparing        :                                                                                                                                                                                                     1/1 
+  Running scriptlet: k3s-selinux-1.6-1.el9.noarch                                                                                                                                                                        1/1 
+  Installing       : k3s-selinux-1.6-1.el9.noarch                                                                                                                                                                        1/1 
+  Running scriptlet: k3s-selinux-1.6-1.el9.noarch                                                                                                                                                                        1/1 
+  Verifying        : k3s-selinux-1.6-1.el9.noarch                                                                                                                                                                        1/1 
+
+Installed:
+  k3s-selinux-1.6-1.el9.noarch                                                                                                                                                                                               
+
+Complete!
+[INFO]  Skipping /usr/local/bin/kubectl symlink to k3s, already exists
+[INFO]  Creating /usr/local/bin/crictl symlink to k3s
+[INFO]  Skipping /usr/local/bin/ctr symlink to k3s, command exists in PATH at /bin/ctr
+[INFO]  Creating killall script /usr/local/bin/k3s-killall.sh
+[INFO]  Creating uninstall script /usr/local/bin/k3s-uninstall.sh
+[INFO]  env: Creating environment file /etc/systemd/system/k3s.service.env
+[INFO]  systemd: Creating service file /etc/systemd/system/k3s.service
+[INFO]  systemd: Enabling k3s unit
+Created symlink /etc/systemd/system/multi-user.target.wants/k3s.service → /etc/systemd/system/k3s.service.
+[INFO]  systemd: Starting k3s
+[estudiante@NBAM07 mlops-course-repo]$ mkdir -p "$HOME/.kube"
+sudo install -m 600 -o "$(id -u)" -g "$(id -g)" /etc/rancher/k3s/k3s.yaml "$HOME/.kube/project-3-k3s.yaml"
+export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
+kubectl wait --for=condition=Ready nodes --all --timeout=5m
+kubectl get nodes -o wide
+node/nbam07 condition met
+NAME     STATUS   ROLES           AGE   VERSION        INTERNAL-IP   EXTERNAL-IP   OS-IMAGE                      KERNEL-VERSION                         CONTAINER-RUNTIME
+nbam07   Ready    control-plane   63s   v1.36.5+k3s1   10.43.97.96   <none>        Rocky Linux 9.8 (Blue Onyx)   5.14.0-687.17.1.el9_8.x86_64 (amd64)   containerd://2.3.4-k3s1.36
+
+####################################################################################################
+
+3. Firewall and join token:
+
+[estudiante@NBAM07 mlops-course-repo]$ sudo systemctl enable --now firewalld
+mkdir -p "$HOME/.local/state/project_3"
+ZONE="$(sudo firewall-cmd --get-zone-of-interface=ens192)"
+[ "$ZONE" != 'no zone' ] || ZONE="$(sudo firewall-cmd --get-default-zone)"
+printf '%s\n' "$ZONE" > "$HOME/.local/state/project_3/firewall-zone"
+for CIDR in 10.42.0.0/16 10.44.0.0/16; do
+  if ! sudo firewall-cmd --permanent --zone=trusted --query-source="$CIDR" >/dev/null; then
+    sudo firewall-cmd --permanent --zone=trusted --add-source="$CIDR"
+    printf '%s\n' "$CIDR" >> "$HOME/.local/state/project_3/firewall-sources"
+  fi
+done
+for PORT in 6443/tcp 8472/udp 10250/tcp 2049/tcp; do
+  RULE="rule family=\"ipv4\" source address=\"10.43.97.108/32\" port port=\"${PORT%/*}\" protocol=\"${PORT#*/}\" accept"
+  if ! sudo firewall-cmd --permanent --zone="$ZONE" --query-rich-rule="$RULE" >/dev/null; then
+    sudo firewall-cmd --permanent --zone="$ZONE" --add-rich-rule="$RULE"
+    printf '%s\n' "$RULE" >> "$HOME/.local/state/project_3/firewall-rules"
+  fi
+done
+sudo firewall-cmd --reload
+sudo cat /var/lib/rancher/k3s/server/node-token
+success
+success
+success
+success
+success
+success
+success
+K105dc091284d1d7c8b54cf92349b18482d8cecf7c938b33c75d4ef2c18b48edcb7::server:473260d288cffdd09a63ea6a849b9b00
+
+####################################################################################################
+
+5. Shared files:
+
+[estudiante@NBAM07 mlops-course-repo]$ export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
+kubectl wait --for=condition=Ready node/nbam19 --timeout=5m
+cd /home/estudiante/mlops-course-repo
+rpm -q nfs-utils >/dev/null 2>&1 || sudo dnf install -y nfs-utils
+rpm -q acl >/dev/null 2>&1 || sudo dnf install -y acl
+mkdir -p project_3/data
+sudo setfacl -R -m u:50000:rwX project_3/data
+find project_3/data -type d -exec sudo setfacl -m d:u:50000:rwX,d:u:1001:rwX {} +
+node/nbam19 condition met
+[sudo] password for estudiante: 
+[estudiante@NBAM07 mlops-course-repo]$ if [ "$(getenforce)" != Disabled ] && [ "$(getsebool nfs_export_all_rw | awk '{print $3}')" = off ]; then
+  echo off > "$HOME/.local/state/project_3/nfs-export-selinux"
+  sudo setsebool -P nfs_export_all_rw on
+fi
+PROJECT3_UID="$(id -u)"
+PROJECT3_GID="$(id -g)"
+printf '%s 10.43.97.108(rw,sync,all_squash,anonuid=%s,anongid=%s,no_subtree_check)\n' \
+  /home/estudiante/mlops-course-repo/project_3 "$PROJECT3_UID" "$PROJECT3_GID" | sudo tee /etc/exports.d/project3.exports >/dev/null
+sudo systemctl enable --now nfs-server
+sudo exportfs -ra
+sudo exportfs -v
+/home/estudiante/mlops-course-repo/project_3
+                10.43.97.108(sync,wdelay,hide,no_subtree_check,anonuid=1001,anongid=1001,sec=sys,rw,secure,root_squash,all_squash)
+
+####################################################################################################
+
+8. Secrets and local services:
+
+[estudiante@NBAM07 mlops-course-repo]$ cd /home/estudiante/mlops-course-repo && \
+export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml" && \
+bash project_3/scripts/apply-secrets.sh && \
+kubectl apply -k project_3/k8s && \
+kubectl rollout status deployment/property-postgres -n project-3 --timeout=10m && \
+kubectl rollout status deployment/airflow-postgres -n project-3 --timeout=10m && \
+kubectl rollout status deployment/mlflow-postgres -n project-3 --timeout=10m && \
+kubectl rollout status deployment/minio -n project-3 --timeout=10m && \
+kubectl wait --for=condition=complete job/create-mlflow-bucket -n project-3 --timeout=10m && \
+kubectl rollout status deployment/mlflow -n project-3 --timeout=20m && \
+kubectl exec -i -n project-3 deployment/property-postgres -- sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < project_3/sql/01_schema.sql
+namespace/project-3 created
+secret/project-3-settings created
+secret/project-3-airflow-fernet created
+secret/project-3-airflow-api created
+secret/project-3-airflow-jwt created
+secret/project-3-airflow-metadata created
+serviceaccount/prometheus-reader created
+role.rbac.authorization.k8s.io/prometheus-reader created
+rolebinding.rbac.authorization.k8s.io/prometheus-reader created
+configmap/grafana-dashboards created
+configmap/grafana-provisioning created
+configmap/project-3-locust created
+configmap/prometheus-config created
+service/airflow-postgres created
+service/grafana created
+service/jupyter created
+service/locust created
+service/minio created
+service/mlflow created
+service/mlflow-postgres created
+service/prometheus created
+service/property-postgres created
+persistentvolumeclaim/airflow-postgres-data created
+persistentvolumeclaim/grafana-data created
+persistentvolumeclaim/minio-data created
+persistentvolumeclaim/mlflow-postgres-data created
+persistentvolumeclaim/prometheus-data created
+persistentvolumeclaim/property-postgres-data created
+deployment.apps/airflow-postgres created
+deployment.apps/grafana created
+deployment.apps/jupyter created
+deployment.apps/locust created
+deployment.apps/minio created
+deployment.apps/mlflow created
+deployment.apps/mlflow-postgres created
+deployment.apps/prometheus created
+deployment.apps/property-postgres created
+job.batch/create-mlflow-bucket created
+Waiting for deployment spec update to be observed...
+Waiting for deployment "property-postgres" rollout to finish: 0 of 1 updated replicas are available...
+deployment "property-postgres" successfully rolled out
+deployment "airflow-postgres" successfully rolled out
+deployment "mlflow-postgres" successfully rolled out
+deployment "minio" successfully rolled out
+job.batch/create-mlflow-bucket condition met
+deployment "mlflow" successfully rolled out
+CREATE SCHEMA
+CREATE SCHEMA
+CREATE SCHEMA
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+ALTER TABLE
+ALTER TABLE
+
+####################################################################################################
+
+9. Airflow:
+
+[estudiante@NBAM07 mlops-course-repo]$ mkdir -p "$HOME/.local/share/project-3" && \
+curl -fsSL https://get.helm.sh/helm-v3.19.0-linux-amd64.tar.gz -o /tmp/project-3-helm.tar.gz && \
+tar -xzf /tmp/project-3-helm.tar.gz -C /tmp linux-amd64/helm && \
+install -m 755 /tmp/linux-amd64/helm "$HOME/.local/share/project-3/helm"
+[estudiante@NBAM07 mlops-course-repo]$ cd /home/estudiante/mlops-course-repo && \
+export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml" && \
+"$HOME/.local/share/project-3/helm" repo add apache-airflow https://airflow.apache.org && \
+"$HOME/.local/share/project-3/helm" repo update apache-airflow && \
+"$HOME/.local/share/project-3/helm" upgrade --install airflow apache-airflow/airflow --version 1.22.0 -n project-3 -f project_3/k8s/airflow/values.yaml && \
+kubectl rollout status statefulset/airflow-scheduler -n project-3 --timeout=20m && \
+kubectl rollout status deployment/airflow-dag-processor -n project-3 --timeout=20m && \
+kubectl rollout status deployment/airflow-api-server -n project-3 --timeout=20m
+"apache-airflow" already exists with the same configuration, skipping
+Hang tight while we grab the latest from your chart repositories...
+...Successfully got an update from the "apache-airflow" chart repository
+Update Complete. ⎈Happy Helming!⎈
+Release "airflow" does not exist. Installing it now.
+NAME: airflow
+LAST DEPLOYED: Thu Nov 26 15:55:43 2026
+NAMESPACE: project-3
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+NOTES:
+Thank you for installing Apache Airflow 3.2.2!
+
+Your release is named airflow.
+You can now access your dashboard(s) by executing the following command(s) and visiting the corresponding port at localhost in your browser:
+Airflow API Server:     kubectl port-forward svc/airflow-api-server 8080:8080 --namespace project-3
+Default user (Airflow UI) Login credentials:
+    username: admin
+    password: admin
+
+ DEPRECATION WARNING:
+    Dags Git-Sync bevaiour with `dags.gitSync.recommendedProbeSetting` equal `false` is deprecated and will be removed in future.
+    Please change your values as support for the old name will be dropped in a future release.
+
+  DEPRECATION WARNING:
+    The default for `enableServiceLinks` will become False in Chart 2.0.
+    If you relied on these environment variables, explicitly set ``enableServiceLinks: true``, or migrate your code to use dns based service lookups.
+Waiting for 1 pods to be ready...
+partitioned roll out complete: 1 new pods have been updated...
+deployment "airflow-dag-processor" successfully rolled out
+deployment "airflow-api-server" successfully rolled out
+
+####################################################################################################
+
+10. Argo CD:
+
+[estudiante@NBAM07 mlops-course-repo]$ set -o pipefail
+export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
+mkdir -p "$HOME/.local/share/project-3" && \
+curl -fL --retry 3 https://codeload.github.com/argoproj/argo-cd/tar.gz/refs/tags/stable -o /tmp/project-3-argocd-stable.tar.gz && \
+  tar -xOzf /tmp/project-3-argocd-stable.tar.gz argo-cd-stable/manifests/install.yaml > "$HOME/.local/share/project-3/argocd-install.yaml" && \
+  test -s "$HOME/.local/share/project-3/argocd-install.yaml" && \
+kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f - && \
+kubectl apply -n argocd --server-side --force-conflicts -f "$HOME/.local/share/project-3/argocd-install.yaml" && \
+kubectl rollout status deployment/argocd-server -n argocd --timeout=10m && \
+kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=10m && \
+kubectl rollout status statefulset/argocd-application-controller -n argocd --timeout=10m && \
+cd /home/estudiante/mlops-course-repo && \
+python3 project_3/scripts/apply-argocd-login.py
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 52.3M    0 52.3M    0     0  11.7M      0 --:--:--  0:00:04 --:--:-- 11.7M
+namespace/argocd created
+customresourcedefinition.apiextensions.k8s.io/applications.argoproj.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/applicationsets.argoproj.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/appprojects.argoproj.io serverside-applied
+serviceaccount/argocd-application-controller serverside-applied
+serviceaccount/argocd-applicationset-controller serverside-applied
+serviceaccount/argocd-dex-server serverside-applied
+serviceaccount/argocd-notifications-controller serverside-applied
+serviceaccount/argocd-redis serverside-applied
+serviceaccount/argocd-repo-server serverside-applied
+serviceaccount/argocd-server serverside-applied
+role.rbac.authorization.k8s.io/argocd-application-controller serverside-applied
+role.rbac.authorization.k8s.io/argocd-applicationset-controller serverside-applied
+role.rbac.authorization.k8s.io/argocd-dex-server serverside-applied
+role.rbac.authorization.k8s.io/argocd-notifications-controller serverside-applied
+role.rbac.authorization.k8s.io/argocd-redis serverside-applied
+role.rbac.authorization.k8s.io/argocd-server serverside-applied
+clusterrole.rbac.authorization.k8s.io/argocd-application-controller serverside-applied
+clusterrole.rbac.authorization.k8s.io/argocd-applicationset-controller serverside-applied
+clusterrole.rbac.authorization.k8s.io/argocd-server serverside-applied
+rolebinding.rbac.authorization.k8s.io/argocd-application-controller serverside-applied
+rolebinding.rbac.authorization.k8s.io/argocd-applicationset-controller serverside-applied
+rolebinding.rbac.authorization.k8s.io/argocd-dex-server serverside-applied
+rolebinding.rbac.authorization.k8s.io/argocd-notifications-controller serverside-applied
+rolebinding.rbac.authorization.k8s.io/argocd-redis serverside-applied
+rolebinding.rbac.authorization.k8s.io/argocd-server serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/argocd-application-controller serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/argocd-applicationset-controller serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/argocd-server serverside-applied
+configmap/argocd-cm serverside-applied
+configmap/argocd-cmd-params-cm serverside-applied
+configmap/argocd-gpg-keys-cm serverside-applied
+configmap/argocd-notifications-cm serverside-applied
+configmap/argocd-rbac-cm serverside-applied
+configmap/argocd-ssh-known-hosts-cm serverside-applied
+configmap/argocd-tls-certs-cm serverside-applied
+secret/argocd-notifications-secret serverside-applied
+secret/argocd-secret serverside-applied
+service/argocd-application-controller serverside-applied
+service/argocd-applicationset-controller serverside-applied
+service/argocd-dex-server serverside-applied
+service/argocd-metrics serverside-applied
+service/argocd-notifications-controller-metrics serverside-applied
+service/argocd-redis serverside-applied
+service/argocd-repo-server serverside-applied
+service/argocd-server serverside-applied
+service/argocd-server-metrics serverside-applied
+deployment.apps/argocd-applicationset-controller serverside-applied
+deployment.apps/argocd-dex-server serverside-applied
+deployment.apps/argocd-notifications-controller serverside-applied
+deployment.apps/argocd-redis serverside-applied
+deployment.apps/argocd-repo-server serverside-applied
+deployment.apps/argocd-server serverside-applied
+statefulset.apps/argocd-application-controller serverside-applied
+networkpolicy.networking.k8s.io/argocd-application-controller-network-policy serverside-applied
+networkpolicy.networking.k8s.io/argocd-applicationset-controller-network-policy serverside-applied
+networkpolicy.networking.k8s.io/argocd-dex-server-network-policy serverside-applied
+networkpolicy.networking.k8s.io/argocd-notifications-controller-network-policy serverside-applied
+networkpolicy.networking.k8s.io/argocd-redis-network-policy serverside-applied
+networkpolicy.networking.k8s.io/argocd-repo-server-network-policy serverside-applied
+networkpolicy.networking.k8s.io/argocd-server-network-policy serverside-applied
+Waiting for deployment "argocd-server" rollout to finish: 0 of 1 updated replicas are available...
+deployment "argocd-server" successfully rolled out
+deployment "argocd-repo-server" successfully rolled out
+partitioned roll out complete: 1 new pods have been updated...
+secret/argocd-secret patched
+Argo CD admin login configured from project_3/.env
+
+####################################################################################################
+
+11. Local API, Streamlit and autoscaling:
+
+[estudiante@NBAM07 mlops-course-repo]$ cd /home/estudiante/mlops-course-repo && \
+export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml" && \
+sed -e 's|image: docker.io/.*/project-3-property-api:.*|image: project-3-property-api:local-test|' -e 's|imagePullPolicy: Always|imagePullPolicy: IfNotPresent|' project_3/k8s/api/api.yaml | kubectl apply -f -
+deployment.apps/property-api created
+service/property-api created
+[estudiante@NBAM07 mlops-course-repo]$ sed 's|image: docker.io/.*/project-3-property-ui:.*|image: project-3-property-ui:local-test|' project_3/k8s/streamlit/streamlit.yaml | kubectl apply -f - && \
+kubectl apply -f project_3/k8s/api/hpa.yaml
+deployment.apps/property-ui created
+service/property-ui created
+horizontalpodautoscaler.autoscaling/property-api created
+
+####################################################################################################
+
+12. Local status:
+
+[estudiante@NBAM07 mlops-course-repo]$ export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
+kubectl rollout status deployment/property-api -n project-3 --timeout=10m
+kubectl rollout status deployment/property-ui -n project-3 --timeout=10m
+kubectl rollout status deployment/prometheus -n project-3 --timeout=10m
+kubectl rollout status deployment/grafana -n project-3 --timeout=10m
+kubectl rollout status deployment/locust -n project-3 --timeout=10m
+kubectl rollout status deployment/jupyter -n project-3 --timeout=20m
+deployment "property-api" successfully rolled out
+deployment "property-ui" successfully rolled out
+deployment "prometheus" successfully rolled out
+deployment "grafana" successfully rolled out
+deployment "locust" successfully rolled out
+deployment "jupyter" successfully rolled out
+[estudiante@NBAM07 mlops-course-repo]$ 
+
+
+[estudiante@NBAM07 mlops-course-repo]$ kubectl get pods,pvc,svc,hpa -n project-3 -o wide
+kubectl top nodes
+NAME                                         READY   STATUS      RESTARTS      AGE     IP           NODE     NOMINATED NODE   READINESS GATES
+pod/airflow-api-server-5c69459d5-pp55c       1/1     Running     1 (10m ago)   14m     10.42.0.24   nbam07   <none>           <none>
+pod/airflow-create-user-l88rg                0/1     Completed   1 (11m ago)   14m     10.42.0.23   nbam07   <none>           <none>
+pod/airflow-dag-processor-6b9f8645b7-v6b4s   2/2     Running     0             14m     10.42.0.21   nbam07   <none>           <none>
+pod/airflow-postgres-544cc99bf9-hxw7g        1/1     Running     0             18m     10.42.0.19   nbam07   <none>           <none>
+pod/airflow-run-airflow-migrations-vnmn6     0/1     Completed   0             14m     10.42.0.22   nbam07   <none>           <none>
+pod/airflow-scheduler-0                      2/2     Running     0             14m     10.42.0.26   nbam07   <none>           <none>
+pod/airflow-statsd-6d5dc4c554-t857g          1/1     Running     0             14m     10.42.1.29   nbam19   <none>           <none>
+pod/create-mlflow-bucket-f7jxt               0/1     Completed   0             18m     10.42.1.22   nbam19   <none>           <none>
+pod/grafana-5d56f48fc-tppx5                  1/1     Running     0             18m     10.42.1.24   nbam19   <none>           <none>
+pod/jupyter-659b4656dc-lvq8s                 1/1     Running     0             18m     10.42.1.18   nbam19   <none>           <none>
+pod/locust-84fcbbf47-rdlpx                   1/1     Running     0             18m     10.42.1.20   nbam19   <none>           <none>
+pod/minio-7c5c76789f-p677c                   1/1     Running     0             18m     10.42.1.25   nbam19   <none>           <none>
+pod/mlflow-846b8fffb5-b9wj9                  1/1     Running     0             18m     10.42.0.17   nbam07   <none>           <none>
+pod/mlflow-postgres-75f759d8d-pzszq          1/1     Running     0             18m     10.42.0.20   nbam07   <none>           <none>
+pod/prometheus-7ff5465548-nbktj              1/1     Running     0             18m     10.42.1.27   nbam19   <none>           <none>
+pod/property-api-bb86f9f5b-np9cd             1/1     Running     0             3m7s    10.42.1.36   nbam19   <none>           <none>
+pod/property-postgres-7ddd7848bb-d4ps8       1/1     Running     0             18m     10.42.1.28   nbam19   <none>           <none>
+pod/property-ui-789746d79d-c25n7             1/1     Running     0             2m50s   10.42.1.37   nbam19   <none>           <none>
+
+NAME                                             STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE   VOLUMEMODE
+persistentvolumeclaim/airflow-postgres-data      Bound    pvc-133e260d-6c00-4da3-bd4d-f8bf7bd51e8a   2Gi        RWO            local-path     <unset>                 18m   Filesystem
+persistentvolumeclaim/grafana-data               Bound    pvc-22a4eda0-9510-464e-875b-c0a87e11739e   1Gi        RWO            local-path     <unset>                 18m   Filesystem
+persistentvolumeclaim/logs-airflow-scheduler-0   Bound    pvc-fbf683ee-017c-4538-a5a5-a8c4b5fd0df5   2Gi        RWO            local-path     <unset>                 14m   Filesystem
+persistentvolumeclaim/minio-data                 Bound    pvc-429bd474-2ab0-4679-af10-030c2cd8b6fd   3Gi        RWO            local-path     <unset>                 18m   Filesystem
+persistentvolumeclaim/mlflow-postgres-data       Bound    pvc-71ee77b8-da02-41f0-b9fd-06a7e4d76b72   2Gi        RWO            local-path     <unset>                 18m   Filesystem
+persistentvolumeclaim/prometheus-data            Bound    pvc-40be340f-3adb-43d3-8ce5-44c089fec2d6   2Gi        RWO            local-path     <unset>                 18m   Filesystem
+persistentvolumeclaim/property-postgres-data     Bound    pvc-75f123ab-ec6f-4fd6-adc3-eeea1d3ebafa   6Gi        RWO            local-path     <unset>                 18m   Filesystem
+
+NAME                         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)             AGE     SELECTOR
+service/airflow-api-server   ClusterIP   10.44.242.177   <none>        8080/TCP            14m     component=api-server,release=airflow,tier=airflow
+service/airflow-postgres     ClusterIP   10.44.163.38    <none>        5432/TCP            18m     app=airflow-postgres
+service/airflow-scheduler    ClusterIP   None            <none>        8793/TCP            14m     component=scheduler,release=airflow,tier=airflow
+service/airflow-statsd       ClusterIP   10.44.75.17     <none>        9125/UDP,9102/TCP   14m     component=statsd,release=airflow,tier=airflow
+service/grafana              ClusterIP   10.44.197.212   <none>        3000/TCP            18m     app=grafana
+service/jupyter              ClusterIP   10.44.67.62     <none>        8888/TCP            18m     app=jupyter
+service/locust               ClusterIP   10.44.116.86    <none>        8089/TCP            18m     app=locust
+service/minio                ClusterIP   10.44.131.133   <none>        9000/TCP,9001/TCP   18m     app=minio
+service/mlflow               ClusterIP   10.44.194.197   <none>        5000/TCP            18m     app=mlflow
+service/mlflow-postgres      ClusterIP   10.44.221.15    <none>        5432/TCP            18m     app=mlflow-postgres
+service/prometheus           ClusterIP   10.44.179.82    <none>        9090/TCP            18m     app=prometheus
+service/property-api         ClusterIP   10.44.33.232    <none>        8000/TCP            3m7s    app=property-api
+service/property-postgres    ClusterIP   10.44.192.195   <none>        5432/TCP            18m     app=property-postgres
+service/property-ui          ClusterIP   10.44.32.187    <none>        8501/TCP            2m50s   app=property-ui
+
+NAME                                               REFERENCE                 TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/property-api   Deployment/property-api   cpu: 3%/70%   1         3         1          2m50s
+NAME     CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
+nbam07   2503m        62%      7813Mi          49%         
+nbam19   2129m        53%      6274Mi          39%         
+
+
+
+
+

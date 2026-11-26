@@ -101,10 +101,15 @@ prediction_tab, history_tab = st.tabs(['Prediction', 'Batch history'])
 with prediction_tab:
     try:
         health = requests.get(api + '/ready', timeout=5)
-        if health.ok:
-            st.caption(f"API ready · model version {health.json().get('version')}")
-        else:
+        if health.status_code == 503:
             st.warning('The API is waiting for a model.')
+        else:
+            health.raise_for_status()
+            version = health.json().get('version')
+            if version is None:
+                st.warning('The API is running and waiting for a champion model.')
+            else:
+                st.caption(f'API ready · model version {version}')
     except (requests.RequestException, ValueError):
         st.warning('The API is unavailable.')
 

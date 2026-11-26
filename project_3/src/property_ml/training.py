@@ -36,8 +36,28 @@ def train_candidate(batch):
         with db.connect() as conn:
             training_reason = conn.execute(text('SELECT reason FROM audit.batch_decisions WHERE group_number=:g AND batch_number=:b'), {'g':GROUP, 'b':batch}).scalar_one()
         with mlflow.start_run(run_name=f'group-{GROUP}-batch-{batch}') as run:
-            mlflow.log_params({'group':GROUP, 'batch':batch, 'algorithm':'XGBRegressor', 'split':'stable property proxy',
-                               'n_estimators':120,'max_depth':5,'learning_rate':0.1, 'code_version':os.getenv('CODE_VERSION', 'unknown')})
+            regressor = model.named_steps['model']
+            preprocess = model.named_steps['preprocess']
+            numeric = preprocess.named_transformers_['numeric']
+            categorical = preprocess.named_transformers_['categorical']
+            mlflow.log_params({
+                'group': GROUP,
+                'batch': batch,
+                'algorithm': type(regressor).__name__,
+                'split': 'stable property proxy',
+                'code_version': os.getenv('CODE_VERSION', 'unknown'),
+                'n_estimators': regressor.n_estimators,
+                'max_depth': regressor.max_depth,
+                'learning_rate': regressor.learning_rate,
+                'tree_method': regressor.tree_method,
+                'random_state': regressor.random_state,
+                'numeric_imputation': numeric.named_steps['impute'].strategy,
+                'numeric_scaler': type(numeric.named_steps['scale']).__name__,
+                'categorical_encoder': type(categorical).__name__,
+                'categorical_handle_unknown': categorical.handle_unknown,
+                'categorical_min_frequency': categorical.min_frequency,
+                'categorical_max_categories': categorical.max_categories,
+            })
             mlflow.log_metrics({'train_mae':float(mean_absolute_error(train['price'], model.predict(X_train))),
                 'validation_mae':float(mean_absolute_error(validation['price'], val_predictions)),
                 'validation_rmse':float(mean_squared_error(validation['price'], val_predictions)**.5),

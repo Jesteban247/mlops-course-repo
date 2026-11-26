@@ -1,0 +1,143 @@
+4. Firewall and K3s worker:
+
+[estudiante@NBAM19 ~]$ sudo systemctl enable --now firewalld
+mkdir -p "$HOME/.local/state/project_3"
+ZONE="$(sudo firewall-cmd --get-zone-of-interface=ens192)"
+[ "$ZONE" != 'no zone' ] || ZONE="$(sudo firewall-cmd --get-default-zone)"
+printf '%s\n' "$ZONE" > "$HOME/.local/state/project_3/firewall-zone"
+for CIDR in 10.42.0.0/16 10.44.0.0/16; do
+  if ! sudo firewall-cmd --permanent --zone=trusted --query-source="$CIDR" >/dev/null; then
+    sudo firewall-cmd --permanent --zone=trusted --add-source="$CIDR"
+    printf '%s\n' "$CIDR" >> "$HOME/.local/state/project_3/firewall-sources"
+  fi
+done
+for PORT in 8472/udp 10250/tcp; do
+  RULE="rule family=\"ipv4\" source address=\"10.43.97.96/32\" port port=\"${PORT%/*}\" protocol=\"${PORT#*/}\" accept"
+  if ! sudo firewall-cmd --permanent --zone="$ZONE" --query-rich-rule="$RULE" >/dev/null; then
+    sudo firewall-cmd --permanent --zone="$ZONE" --add-rich-rule="$RULE"
+    printf '%s\n' "$RULE" >> "$HOME/.local/state/project_3/firewall-rules"
+  fi
+done
+sudo firewall-cmd --reload
+[sudo] password for estudiante: 
+success
+[estudiante@NBAM19 ~]$ (
+  set -euo pipefail
+  df -h /var
+  timeout 5 bash -c '</dev/tcp/10.43.97.96/6443'
+  read -rs -p 'K3s join token: ' PROJECT3_JOIN_TOKEN
+  echo
+  test -n "$PROJECT3_JOIN_TOKEN"
+  curl -sfL https://get.k3s.io | sudo env \
+    INSTALL_K3S_VERSION='v1.36.5+k3s1' \
+    K3S_URL='https://10.43.97.96:6443' K3S_TOKEN="$PROJECT3_JOIN_TOKEN" sh -
+  systemctl is-active k3s-agent
+)
+Filesystem                          Size  Used Avail Use% Mounted on
+/dev/mapper/rl_plantillarocky9-var   15G  1.1G   14G   7% /var
+K3s join token: 
+[INFO]  Using v1.36.5+k3s1 as release
+[INFO]  Downloading hash https://github.com/k3s-io/k3s/releases/download/v1.36.5%2Bk3s1/sha256sum-amd64.txt
+[INFO]  Downloading binary https://github.com/k3s-io/k3s/releases/download/v1.36.5%2Bk3s1/k3s
+[INFO]  Verifying binary download
+[INFO]  Installing k3s to /usr/local/bin/k3s
+[INFO]  Finding available k3s-selinux versions
+Rancher K3s Common (stable)                                                                                                                                                                                                             9.1 kB/s | 2.9 kB     00:00    
+Dependencies resolved.
+========================================================================================================================================================================================================================================================================
+ Package                                                       Architecture                                             Version                                                       Repository                                                                   Size
+========================================================================================================================================================================================================================================================================
+Installing:
+ k3s-selinux                                                   noarch                                                   1.6-1.el9                                                     rancher-k3s-common-stable                                                    22 k
+
+Transaction Summary
+========================================================================================================================================================================================================================================================================
+Install  1 Package
+
+Total download size: 22 k
+Installed size: 96 k
+Downloading Packages:
+k3s-selinux-1.6-1.el9.noarch.rpm                                                                                                                                                                                                         88 kB/s |  22 kB     00:00    
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Total                                                                                                                                                                                                                                    87 kB/s |  22 kB     00:00     
+Running transaction check
+Transaction check succeeded.
+Running transaction test
+Transaction test succeeded.
+Running transaction
+  Preparing        :                                                                                                                                                                                                                                                1/1 
+  Running scriptlet: k3s-selinux-1.6-1.el9.noarch                                                                                                                                                                                                                   1/1 
+  Installing       : k3s-selinux-1.6-1.el9.noarch                                                                                                                                                                                                                   1/1 
+  Running scriptlet: k3s-selinux-1.6-1.el9.noarch                                                                                                                                                                                                                   1/1 
+  Verifying        : k3s-selinux-1.6-1.el9.noarch                                                                                                                                                                                                                   1/1 
+
+Installed:
+  k3s-selinux-1.6-1.el9.noarch                                                                                                                                                                                                                                          
+
+Complete!
+[INFO]  Creating /usr/local/bin/kubectl symlink to k3s
+[INFO]  Creating /usr/local/bin/crictl symlink to k3s
+[INFO]  Skipping /usr/local/bin/ctr symlink to k3s, command exists in PATH at /bin/ctr
+[INFO]  Creating killall script /usr/local/bin/k3s-killall.sh
+[INFO]  Creating uninstall script /usr/local/bin/k3s-agent-uninstall.sh
+[INFO]  env: Creating environment file /etc/systemd/system/k3s-agent.service.env
+[INFO]  systemd: Creating service file /etc/systemd/system/k3s-agent.service
+[INFO]  systemd: Enabling k3s-agent unit
+Created symlink /etc/systemd/system/multi-user.target.wants/k3s-agent.service → /etc/systemd/system/k3s-agent.service.
+[INFO]  systemd: Starting k3s-agent
+active
+
+####################################################################################################
+
+6. NFS client:
+
+[estudiante@NBAM19 ~]$ rpm -q nfs-utils >/dev/null 2>&1 || sudo dnf install -y nfs-utils
+if [ "$(getenforce)" != Disabled ] && [ "$(getsebool virt_use_nfs | awk '{print $3}')" = off ]; then
+  echo off > "$HOME/.local/state/project_3/nfs-client-selinux"
+  sudo setsebool -P virt_use_nfs on
+fi
+sudo mkdir -p /mnt/project3-nfs-check
+sudo mount -t nfs -o vers=4.2 10.43.97.96:/home/estudiante/mlops-course-repo/project_3 /mnt/project3-nfs-check
+ls /mnt/project3-nfs-check/notebooks
+sudo umount /mnt/project3-nfs-check
+sudo rmdir /mnt/project3-nfs-check
+[sudo] password for estudiante: 
+01_collect_batches.ipynb  03_preprocessing_batch_0.ipynb        05_modeling_batch_0.ipynb     07_compare_batches.ipynb       09_database_inspection.ipynb
+02_eda_batch_0.ipynb      04_feature_engineering_batch_0.ipynb  06_predictions_batch_0.ipynb  08_retraining_decisions.ipynb  requirements.txt
+
+####################################################################################################
+
+7. Import local test images:
+
+[estudiante@NBAM19 ~]$ (
+  set -euo pipefail
+  [ "$(hostname -s | tr '[:upper:]' '[:lower:]')" = nbam19 ]
+  df -h /var /tmp
+  project3_archive="$(mktemp /tmp/project3-images.XXXXXX.tar)"
+  trap 'rm -f "$project3_archive"' EXIT
+  sudo mkdir -p /mnt/project3-image
+  project3_export='10.43.97.96:/home/estudiante/mlops-course-repo/project_3'
+  if ! mountpoint -q /mnt/project3-image; then
+    sudo mount -t nfs -o vers=4.2 "$project3_export" /mnt/project3-image
+  fi
+  test "$(findmnt -n -M /mnt/project3-image -o SOURCE)" = "$project3_export"
+  trap 'sudo umount /mnt/project3-image && sudo rmdir /mnt/project3-image; rm -f "$project3_archive"' EXIT
+  cp /mnt/project3-image/data/project-3-test-images.tar "$project3_archive"
+  sudo umount /mnt/project3-image
+  trap 'rm -f "$project3_archive"' EXIT
+  sudo rmdir /mnt/project3-image
+  sudo /usr/local/bin/k3s ctr -n k8s.io images import "$project3_archive"
+  project3_images="$(sudo /usr/local/bin/k3s ctr -n k8s.io images ls -q)"
+  grep -Fx 'docker.io/library/project-3-property-api:local-test' <<< "$project3_images"
+  grep -Fx 'docker.io/library/project-3-property-ui:local-test' <<< "$project3_images"
+)
+Filesystem                           Size  Used Avail Use% Mounted on
+/dev/mapper/rl_plantillarocky9-var    15G  1.3G   14G   9% /var
+/dev/mapper/rl_plantillarocky9-root   24G  4.5G   20G  19% /
+docker.io/library/project 3 property api        saved
+docker.io/library/project 3 property ui:        saved
+application/vnd.oci.image.index.v1+json sha256:b6237cdcb64ef3e7240ccd0f12729108fc1c590c77f7f55ffe04938cd58d8e01
+application/vnd.oci.image.index.v1+json sha256:d06f177645477c0a77e8df0b73fd0a72527bafcfa6d41f466cffc5c4cf021a48
+Importing       elapsed: 38.5s  total:   0.0 B  (0.0 B/s)
+docker.io/library/project-3-property-api:local-test
+docker.io/library/project-3-property-ui:local-test
