@@ -10,7 +10,7 @@ spec:
       nodeSelector: {kubernetes.io/hostname: nbam19}
       containers:
         - name: api
-          image: docker.io/jesteban247/project-3-property-api:sha-be026ec7c532c08973d37da003688776246aa894
+          image: docker.io/jesteban247/project-3-property-api:sha-5fbdd6c65d8d68357bc677f1a12b0fcbe46813d9
           imagePullPolicy: Always
           ports: [{name: http, containerPort: 8000}]
           envFrom:
