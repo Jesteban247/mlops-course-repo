@@ -26,7 +26,7 @@ def main():
     parser.add_argument('--spawn-rate', type=positive, default=1)
     parser.add_argument('--warmup', type=positive, default=15)
     parser.add_argument('--duration', type=positive, default=120)
-    parser.add_argument('--host', default='http://property-api:8000')
+    parser.add_argument('--host', default='http://127.0.0.1:18001')
     args = parser.parse_args()
     try:
         with urlopen(args.host.rstrip('/') + '/ready', timeout=10) as response:

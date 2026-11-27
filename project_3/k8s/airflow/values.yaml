@@ -195,6 +195,8 @@ extraEnv: |
     value: property-price
 secret: []
 statsd:
+  nodeSelector:
+    kubernetes.io/hostname: nbam07
   resources:
     requests:
       cpu: 10m

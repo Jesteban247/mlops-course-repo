@@ -1,5 +1,7 @@
 # Project 3 commands
 
+NBAM07 runs Airflow, MLflow, and their PostgreSQL databases. NBAM19 runs the API, Streamlit, property PostgreSQL, MinIO, Prometheus, and Grafana. Notebooks run directly on NBAM07, and Locust runs on the tester’s computer.
+
 ## 1. Build local test images — NBAM07
 
 ```bash
@@ -52,7 +54,7 @@ for CIDR in 10.42.0.0/16 10.44.0.0/16; do
     printf '%s\n' "$CIDR" >> "$HOME/.local/state/project_3/firewall-sources"
   fi
 done
-for PORT in 6443/tcp 8472/udp 10250/tcp 2049/tcp; do
+for PORT in 6443/tcp 8472/udp 10250/tcp; do
   RULE="rule family=\"ipv4\" source address=\"10.43.97.108/32\" port port=\"${PORT%/*}\" protocol=\"${PORT#*/}\" accept"
   if ! sudo firewall-cmd --permanent --zone="$ZONE" --query-rich-rule="$RULE" >/dev/null; then
     sudo firewall-cmd --permanent --zone="$ZONE" --add-rich-rule="$RULE"
@@ -102,76 +104,46 @@ sudo firewall-cmd --reload
 )
 ```
 
-## 5. Shared files — NBAM07
+## 5. Airflow data directory — NBAM07
 
 ```bash
 export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
 kubectl wait --for=condition=Ready node/nbam19 --timeout=5m
 cd /home/estudiante/mlops-course-repo
-rpm -q nfs-utils >/dev/null 2>&1 || sudo dnf install -y nfs-utils
 rpm -q acl >/dev/null 2>&1 || sudo dnf install -y acl
 mkdir -p project_3/data
 sudo setfacl -R -m u:50000:rwX project_3/data
 find project_3/data -type d -exec sudo setfacl -m d:u:50000:rwX,d:u:1001:rwX {} +
 ```
 
+## 6. Copy the local image archive — NBAM07 to NBAM19
+
+Push the archive from NBAM07.
+
 ```bash
-if [ "$(getenforce)" != Disabled ] && [ "$(getsebool nfs_export_all_rw | awk '{print $3}')" = off ]; then
-  echo off > "$HOME/.local/state/project_3/nfs-export-selinux"
-  sudo setsebool -P nfs_export_all_rw on
-fi
-PROJECT3_UID="$(id -u)"
-PROJECT3_GID="$(id -g)"
-printf '%s 10.43.97.108(rw,sync,all_squash,anonuid=%s,anongid=%s,no_subtree_check)\n' \
-  /home/estudiante/mlops-course-repo/project_3 "$PROJECT3_UID" "$PROJECT3_GID" | sudo tee /etc/exports.d/project3.exports >/dev/null
-sudo systemctl enable --now nfs-server
-sudo exportfs -ra
-sudo exportfs -v
+scp /home/estudiante/mlops-course-repo/project_3/data/project-3-test-images.tar \
+  estudiante@10.43.97.108:/tmp/project-3-test-images.tar
 ```
 
-## 6. NFS client — NBAM19
+Verify the archive on NBAM19 before starting step 7.
 
 ```bash
-rpm -q nfs-utils >/dev/null 2>&1 || sudo dnf install -y nfs-utils
-if [ "$(getenforce)" != Disabled ] && [ "$(getsebool virt_use_nfs | awk '{print $3}')" = off ]; then
-  echo off > "$HOME/.local/state/project_3/nfs-client-selinux"
-  sudo setsebool -P virt_use_nfs on
-fi
-sudo mkdir -p /mnt/project3-nfs-check
-sudo mount -t nfs -o vers=4.2 10.43.97.96:/home/estudiante/mlops-course-repo/project_3 /mnt/project3-nfs-check
-ls /mnt/project3-nfs-check/notebooks
-sudo umount /mnt/project3-nfs-check
-sudo rmdir /mnt/project3-nfs-check
+ls -lh /tmp/project-3-test-images.tar
 ```
 
 ## 7. Import local test images — NBAM19
 
-The archive is copied to local storage before import. If containerd reports a busy temporary unmount, this block restarts `k3s-agent` and retries once when only Kubernetes system pod sandboxes are present. Continue after both image tags print.
+Use the archive copied in step 6. If containerd reports a busy temporary unmount, this block restarts `k3s-agent` and retries once when only Kubernetes system pod sandboxes are present. Continue after both image tags print.
 
 ```bash
 (
   set -euo pipefail
   [ "$(hostname -s | tr '[:upper:]' '[:lower:]')" = nbam19 ]
   df -h /var /tmp
-  project3_temp="$(mktemp -d /tmp/project3-images.XXXXXX)"
-  project3_mount="$project3_temp/nfs"
-  project3_archive="$project3_temp/images.tar"
-  project3_log="$project3_temp/import.log"
-
-  cleanup_import() {
-    if mountpoint -q "$project3_mount"; then
-      sudo umount "$project3_mount" || return 1
-    fi
-    rm -f "$project3_archive" "$project3_log"
-    rmdir "$project3_mount" "$project3_temp"
-  }
-
-  mkdir "$project3_mount"
-  trap cleanup_import EXIT
-  sudo mount -t nfs -o vers=4.2 \
-    10.43.97.96:/home/estudiante/mlops-course-repo/project_3 "$project3_mount"
-  cp "$project3_mount/data/project-3-test-images.tar" "$project3_archive"
-  sudo umount "$project3_mount"
+  project3_archive=/tmp/project-3-test-images.tar
+  test -s "$project3_archive"
+  project3_log="$(mktemp /tmp/project3-import.XXXXXX)"
+  trap 'rm -f "$project3_log"' EXIT
 
   if sudo /usr/local/bin/k3s ctr -n k8s.io images import "$project3_archive" 2>&1 | tee "$project3_log"; then
     :
@@ -200,10 +172,13 @@ sys.exit(any(pod["metadata"]["namespace"] != "kube-system" for pod in pods))
   project3_images="$(sudo /usr/local/bin/k3s ctr -n k8s.io images ls -q)"
   grep -Fx 'docker.io/library/project-3-property-api:local-test' <<< "$project3_images"
   grep -Fx 'docker.io/library/project-3-property-ui:local-test' <<< "$project3_images"
+  rm -f "$project3_archive"
 )
 ```
 
 ## 8. Secrets and local services — NBAM07
+
+Prepare the private `project_3/.env` from `project_3/.env.example` before applying Secrets. Keep the assigned teacher API URL and group.
 
 ```bash
 cd /home/estudiante/mlops-course-repo && \
@@ -278,10 +253,8 @@ kubectl rollout status deployment/property-api -n project-3 --timeout=10m
 kubectl rollout status deployment/property-ui -n project-3 --timeout=10m
 kubectl rollout status deployment/prometheus -n project-3 --timeout=10m
 kubectl rollout status deployment/grafana -n project-3 --timeout=10m
-kubectl rollout status deployment/locust -n project-3 --timeout=10m
-kubectl rollout status deployment/jupyter -n project-3 --timeout=20m
-```  
- 
+```
+
 ```bash
 kubectl get pods,pvc,svc,hpa -n project-3 -o wide
 kubectl top nodes
@@ -310,13 +283,6 @@ MLflow — <http://localhost:5000>:
 ```bash
 export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
 kubectl port-forward -n project-3 svc/mlflow 5000:5000
-```
-
-Jupyter — <http://localhost:8888> (`JUPYTER_TOKEN` in `.env`):
-
-```bash
-export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
-kubectl port-forward -n project-3 svc/jupyter 8888:8888
 ```
 
 MinIO — <http://localhost:9001> (`MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD` in `.env`):
@@ -365,7 +331,7 @@ export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
 kubectl port-forward -n project-3 svc/grafana 3000:3000
 ```
 
-### Locust experiments — NBAM07
+### Locust experiments — tester’s computer
 
 [Single-pod capacity and autoscaling experiments](locust/README.md)
 
@@ -398,7 +364,7 @@ git status --short --branch
 
 ## 15. Enable Argo CD sync — NBAM07
 
-After pulling the merged `main`, register the API application. Argo CD automatically syncs the API Deployment, Service, and HPA from `main`. Manage the remaining workloads with the local deployment commands in steps 8, 9, and 11. To update Streamlit, rebuild and import its local image using steps 1 and 7, then restart its deployment.
+Before switching to the published API image, run `df -h /var` on NBAM19 to check that the worker has room to unpack it. After pulling the merged `main`, register the API application. Argo CD automatically syncs the API Deployment, Service, and HPA from `main`. Manage the remaining workloads with the local deployment commands in steps 8, 9, and 11. To update Streamlit, rebuild and import its local image using steps 1 and 7, then restart its deployment.
 
 ```bash
 cd /home/estudiante/mlops-course-repo &&
@@ -416,7 +382,7 @@ After the API is `Synced` and `Healthy`, use a second PR to change `averageUtili
 kubectl -n project-3 get hpa property-api
 ```
 
-Run these checks after the first model is promoted. Use Jupyter notebook 09 for PostgreSQL evidence.
+Run these checks after the first model is promoted. Use the notebook 09 command in step 13 for PostgreSQL evidence.
 
 ```bash
 export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
@@ -447,6 +413,8 @@ kubectl rollout status statefulset/airflow-scheduler -n project-3 --timeout=20m
 
 **This deletes the K3s worker and its local persistent volumes.**
 
+The NFS cleanup applies to older installs that used an image share.
+
 ```bash
 (
   set -euo pipefail
@@ -455,6 +423,7 @@ kubectl rollout status statefulset/airflow-scheduler -n project-3 --timeout=20m
     if mountpoint -q "$PROJECT3_MOUNT"; then sudo umount "$PROJECT3_MOUNT"; fi
   done
   sudo rmdir /mnt/project3-image /mnt/project3-nfs-check 2>/dev/null || true
+  rm -f /tmp/project-3-test-images.tar
   if [ -x /usr/local/bin/k3s-agent-uninstall.sh ]; then sudo /usr/local/bin/k3s-agent-uninstall.sh; fi
   if [ -f "$HOME/.local/state/project_3/nfs-client-selinux" ]; then
     sudo setsebool -P virt_use_nfs off
@@ -475,15 +444,21 @@ kubectl rollout status statefulset/airflow-scheduler -n project-3 --timeout=20m
 
 **This deletes the K3s cluster and its local persistent volumes.**
 
+The export cleanup applies to older installs that used an image share.
+
 ```bash
 (
   set -euo pipefail
   [ "$(hostname -s | tr '[:upper:]' '[:lower:]')" = nbam07 ]
   if [ -x /usr/local/bin/k3s-uninstall.sh ]; then sudo /usr/local/bin/k3s-uninstall.sh; fi
-  sudo rm -f /etc/exports.d/project3.exports
-  sudo exportfs -ra
-  sudo setfacl -R -x u:50000 /home/estudiante/mlops-course-repo/project_3/data
-  find /home/estudiante/mlops-course-repo/project_3/data -type d -exec sudo setfacl -x d:u:50000,d:u:1001 {} +
+  if [ -f /etc/exports.d/project3.exports ]; then
+    sudo rm -f /etc/exports.d/project3.exports
+    sudo exportfs -ra
+  fi
+  if command -v setfacl >/dev/null && [ -d /home/estudiante/mlops-course-repo/project_3/data ]; then
+    sudo setfacl -R -x u:50000 /home/estudiante/mlops-course-repo/project_3/data
+    find /home/estudiante/mlops-course-repo/project_3/data -type d -exec sudo setfacl -x d:u:50000,d:u:1001 {} +
+  fi
   if [ -f "$HOME/.local/state/project_3/nfs-export-selinux" ]; then
     sudo setsebool -P nfs_export_all_rw off
   fi
