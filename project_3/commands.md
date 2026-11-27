@@ -333,7 +333,7 @@ kubectl port-forward -n project-3 svc/grafana 3000:3000
 
 ### Locust experiments — tester’s computer
 
-[Single-pod capacity and autoscaling experiments](locust/README.md)
+[Open the Locust UI and test API autoscaling](locust/README.md)
 
 ## 14. Publish the tested changes — NBAM07
 
@@ -342,7 +342,7 @@ Replace `YOUR_BRANCH` with the branch name. When already on the branch for these
 ```bash
 cd /home/estudiante/mlops-course-repo
 git switch -c YOUR_BRANCH
-git add -A -- project_3 .github/workflows/project-3-ci.yml
+git add -A -- README.md project_3 .github/workflows/project-3-ci.yml
 git diff --cached --stat
 ```
 
