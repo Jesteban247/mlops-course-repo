@@ -42,7 +42,8 @@ K3s join token:
 [INFO]  Verifying binary download
 [INFO]  Installing k3s to /usr/local/bin/k3s
 [INFO]  Finding available k3s-selinux versions
-Rancher K3s Common (stable)                                                                                                                                                                                                             9.1 kB/s | 2.9 kB     00:00    
+Rancher K3s Common (stable)                                                                                                                                                                                                             5.7 kB/s | 2.9 kB     00:00    
+Last metadata expiration check: 0:00:01 ago on Thu 26 Nov 2026 06:41:06 PM -05.
 Dependencies resolved.
 ========================================================================================================================================================================================================================================================================
  Package                                                       Architecture                                             Version                                                       Repository                                                                   Size
@@ -57,9 +58,9 @@ Install  1 Package
 Total download size: 22 k
 Installed size: 96 k
 Downloading Packages:
-k3s-selinux-1.6-1.el9.noarch.rpm                                                                                                                                                                                                         88 kB/s |  22 kB     00:00    
+k3s-selinux-1.6-1.el9.noarch.rpm                                                                                                                                                                                                         45 kB/s |  22 kB     00:00    
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Total                                                                                                                                                                                                                                    87 kB/s |  22 kB     00:00     
+Total                                                                                                                                                                                                                                    44 kB/s |  22 kB     00:00     
 Running transaction check
 Transaction check succeeded.
 Running transaction test
@@ -86,6 +87,7 @@ Complete!
 Created symlink /etc/systemd/system/multi-user.target.wants/k3s-agent.service → /etc/systemd/system/k3s-agent.service.
 [INFO]  systemd: Starting k3s-agent
 active
+[estudiante@NBAM19 ~]$ 
 
 ####################################################################################################
 
@@ -104,6 +106,7 @@ sudo rmdir /mnt/project3-nfs-check
 [sudo] password for estudiante: 
 01_collect_batches.ipynb  03_preprocessing_batch_0.ipynb        05_modeling_batch_0.ipynb     07_compare_batches.ipynb       09_database_inspection.ipynb
 02_eda_batch_0.ipynb      04_feature_engineering_batch_0.ipynb  06_predictions_batch_0.ipynb  08_retraining_decisions.ipynb  requirements.txt
+[estudiante@NBAM19 ~]$ 
 
 ####################################################################################################
 
@@ -113,31 +116,62 @@ sudo rmdir /mnt/project3-nfs-check
   set -euo pipefail
   [ "$(hostname -s | tr '[:upper:]' '[:lower:]')" = nbam19 ]
   df -h /var /tmp
-  project3_archive="$(mktemp /tmp/project3-images.XXXXXX.tar)"
-  trap 'rm -f "$project3_archive"' EXIT
-  sudo mkdir -p /mnt/project3-image
-  project3_export='10.43.97.96:/home/estudiante/mlops-course-repo/project_3'
-  if ! mountpoint -q /mnt/project3-image; then
-    sudo mount -t nfs -o vers=4.2 "$project3_export" /mnt/project3-image
+  project3_temp="$(mktemp -d /tmp/project3-images.XXXXXX)"
+  project3_mount="$project3_temp/nfs"
+  project3_archive="$project3_temp/images.tar"
+  project3_log="$project3_temp/import.log"
+
+  cleanup_import() {
+    if mountpoint -q "$project3_mount"; then
+      sudo umount "$project3_mount" || return 1
+    fi
+    rm -f "$project3_archive" "$project3_log"
+    rmdir "$project3_mount" "$project3_temp"
+  }
+
+  mkdir "$project3_mount"
+  trap cleanup_import EXIT
+  sudo mount -t nfs -o vers=4.2 \
+    10.43.97.96:/home/estudiante/mlops-course-repo/project_3 "$project3_mount"
+  cp "$project3_mount/data/project-3-test-images.tar" "$project3_archive"
+  sudo umount "$project3_mount"
+
+  if sudo /usr/local/bin/k3s ctr -n k8s.io images import "$project3_archive" 2>&1 | tee "$project3_log"; then
+    :
+  else
+    if ! grep -q 'failed to unmount.*device or resource busy' "$project3_log"; then
+      exit 1
+    fi
+
+    if ! sudo /usr/local/bin/k3s crictl pods -o json | python3 -c '
+import json
+import sys
+
+pods = json.load(sys.stdin)["items"]
+sys.exit(any(pod["metadata"]["namespace"] != "kube-system" for pod in pods))
+'; then
+      echo 'Could not confirm that only system pods are present. Check NBAM19 before restarting k3s-agent.' >&2
+      exit 1
+    fi
+
+    echo 'Restarting k3s-agent on NBAM19 and retrying the image import once.'
+    sudo systemctl restart k3s-agent
+    sudo systemctl is-active k3s-agent
+    sudo /usr/local/bin/k3s ctr -n k8s.io images import "$project3_archive"
   fi
-  test "$(findmnt -n -M /mnt/project3-image -o SOURCE)" = "$project3_export"
-  trap 'sudo umount /mnt/project3-image && sudo rmdir /mnt/project3-image; rm -f "$project3_archive"' EXIT
-  cp /mnt/project3-image/data/project-3-test-images.tar "$project3_archive"
-  sudo umount /mnt/project3-image
-  trap 'rm -f "$project3_archive"' EXIT
-  sudo rmdir /mnt/project3-image
-  sudo /usr/local/bin/k3s ctr -n k8s.io images import "$project3_archive"
+
   project3_images="$(sudo /usr/local/bin/k3s ctr -n k8s.io images ls -q)"
   grep -Fx 'docker.io/library/project-3-property-api:local-test' <<< "$project3_images"
   grep -Fx 'docker.io/library/project-3-property-ui:local-test' <<< "$project3_images"
 )
 Filesystem                           Size  Used Avail Use% Mounted on
-/dev/mapper/rl_plantillarocky9-var    15G  1.3G   14G   9% /var
+/dev/mapper/rl_plantillarocky9-var    15G  1.4G   14G   9% /var
 /dev/mapper/rl_plantillarocky9-root   24G  4.5G   20G  19% /
 docker.io/library/project 3 property api        saved
 docker.io/library/project 3 property ui:        saved
-application/vnd.oci.image.index.v1+json sha256:b6237cdcb64ef3e7240ccd0f12729108fc1c590c77f7f55ffe04938cd58d8e01
-application/vnd.oci.image.index.v1+json sha256:d06f177645477c0a77e8df0b73fd0a72527bafcfa6d41f466cffc5c4cf021a48
-Importing       elapsed: 38.5s  total:   0.0 B  (0.0 B/s)
+application/vnd.oci.image.index.v1+json sha256:060ea25400bfd6e8ef4ceacee0a0d6e0cca523cb42f0939c1b6c3f52ee59cf0f
+application/vnd.oci.image.index.v1+json sha256:dc455d595872d849046b35387b3d58bc616e974e6d597cfa77013858dfaba0da
+Importing       elapsed: 36.5s  total:   0.0 B  (0.0 B/s)
 docker.io/library/project-3-property-api:local-test
 docker.io/library/project-3-property-ui:local-test
+[estudiante@NBAM19 ~]$ 

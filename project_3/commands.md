@@ -146,27 +146,57 @@ sudo rmdir /mnt/project3-nfs-check
 
 ## 7. Import local test images — NBAM19
 
-Copy the archive from NFS to local storage before importing. Both expected image tags should print at the end.
+The archive is copied to local storage before import. If containerd reports a busy temporary unmount, this block restarts `k3s-agent` and retries once when only Kubernetes system pod sandboxes are present. Continue after both image tags print.
 
 ```bash
 (
   set -euo pipefail
   [ "$(hostname -s | tr '[:upper:]' '[:lower:]')" = nbam19 ]
   df -h /var /tmp
-  project3_archive="$(mktemp /tmp/project3-images.XXXXXX.tar)"
-  trap 'rm -f "$project3_archive"' EXIT
-  sudo mkdir -p /mnt/project3-image
-  project3_export='10.43.97.96:/home/estudiante/mlops-course-repo/project_3'
-  if ! mountpoint -q /mnt/project3-image; then
-    sudo mount -t nfs -o vers=4.2 "$project3_export" /mnt/project3-image
+  project3_temp="$(mktemp -d /tmp/project3-images.XXXXXX)"
+  project3_mount="$project3_temp/nfs"
+  project3_archive="$project3_temp/images.tar"
+  project3_log="$project3_temp/import.log"
+
+  cleanup_import() {
+    if mountpoint -q "$project3_mount"; then
+      sudo umount "$project3_mount" || return 1
+    fi
+    rm -f "$project3_archive" "$project3_log"
+    rmdir "$project3_mount" "$project3_temp"
+  }
+
+  mkdir "$project3_mount"
+  trap cleanup_import EXIT
+  sudo mount -t nfs -o vers=4.2 \
+    10.43.97.96:/home/estudiante/mlops-course-repo/project_3 "$project3_mount"
+  cp "$project3_mount/data/project-3-test-images.tar" "$project3_archive"
+  sudo umount "$project3_mount"
+
+  if sudo /usr/local/bin/k3s ctr -n k8s.io images import "$project3_archive" 2>&1 | tee "$project3_log"; then
+    :
+  else
+    if ! grep -q 'failed to unmount.*device or resource busy' "$project3_log"; then
+      exit 1
+    fi
+
+    if ! sudo /usr/local/bin/k3s crictl pods -o json | python3 -c '
+import json
+import sys
+
+pods = json.load(sys.stdin)["items"]
+sys.exit(any(pod["metadata"]["namespace"] != "kube-system" for pod in pods))
+'; then
+      echo 'Could not confirm that only system pods are present. Check NBAM19 before restarting k3s-agent.' >&2
+      exit 1
+    fi
+
+    echo 'Restarting k3s-agent on NBAM19 and retrying the image import once.'
+    sudo systemctl restart k3s-agent
+    sudo systemctl is-active k3s-agent
+    sudo /usr/local/bin/k3s ctr -n k8s.io images import "$project3_archive"
   fi
-  test "$(findmnt -n -M /mnt/project3-image -o SOURCE)" = "$project3_export"
-  trap 'sudo umount /mnt/project3-image && sudo rmdir /mnt/project3-image; rm -f "$project3_archive"' EXIT
-  cp /mnt/project3-image/data/project-3-test-images.tar "$project3_archive"
-  sudo umount /mnt/project3-image
-  trap 'rm -f "$project3_archive"' EXIT
-  sudo rmdir /mnt/project3-image
-  sudo /usr/local/bin/k3s ctr -n k8s.io images import "$project3_archive"
+
   project3_images="$(sudo /usr/local/bin/k3s ctr -n k8s.io images ls -q)"
   grep -Fx 'docker.io/library/project-3-property-api:local-test' <<< "$project3_images"
   grep -Fx 'docker.io/library/project-3-property-ui:local-test' <<< "$project3_images"
@@ -335,42 +365,40 @@ export KUBECONFIG="$HOME/.kube/project-3-k3s.yaml"
 kubectl port-forward -n project-3 svc/grafana 3000:3000
 ```
 
-The Locust load test runs on a local computer outside the cluster nodes. The tester downloads the entire `project_3/locust` folder, opens it locally, and follows the [Locust setup and run instructions](locust/README.md) after verifying a prediction.
+### Locust experiments — NBAM07
 
-```bash
-kubectl get hpa -n project-3 -w
-```
+[Single-pod capacity and autoscaling experiments](locust/README.md)
 
 ## 14. Publish the tested changes — NBAM07
 
-Create a branch for the local changes, stage Project 3 including the evidence, and review the staged files. If a branch already exists, use that branch and skip `git switch -c`.
+Replace `YOUR_BRANCH` with the branch name. When already on the branch for these changes, skip `git switch -c`. Stage Project 3, including evidence, and review the staged files.
 
 ```bash
 cd /home/estudiante/mlops-course-repo
-git switch -c project-3-clean-install
+git switch -c YOUR_BRANCH
 git add -A -- project_3 .github/workflows/project-3-ci.yml
 git diff --cached --stat
 ```
 
-Check that `project_3/evidence/` is staged and that screenshots and terminal logs contain no credentials. Then commit and push.
+Review any staged screenshots and terminal logs for credentials. Replace `YOUR COMMIT MESSAGE` with a short description of the changes.
 
 ```bash
-git commit -m "Prepare Project 3 for deployment and add evidence" &&
+git commit -m "YOUR COMMIT MESSAGE" &&
 git push -u origin HEAD
 ```
 
-Open the PR to `main` on GitHub. Wait for the tests and image publishing to pass before merging. After the PR is merged, update the checkout used by Airflow and delete the local branch.
+Open the PR to `main` on GitHub. Wait for the tests and API image publishing to pass before merging. GitHub Actions publishes only the API image. After the PR is merged, update the checkout used by Airflow and delete the local branch.
 
 ```bash
 git switch main &&
 git pull --ff-only origin main &&
-git branch -d project-3-clean-install &&
+git branch -d YOUR_BRANCH &&
 git status --short --branch
 ```
 
 ## 15. Enable Argo CD sync — NBAM07
 
-After pulling the merged `main`, register the API application. Argo CD automatically syncs the API Deployment, Service, and HPA from `main`. Manage the remaining workloads with the local deployment commands in steps 8, 9, and 11. After publishing a Streamlit change, apply its versioned manifest from the updated checkout.
+After pulling the merged `main`, register the API application. Argo CD automatically syncs the API Deployment, Service, and HPA from `main`. Manage the remaining workloads with the local deployment commands in steps 8, 9, and 11. To update Streamlit, rebuild and import its local image using steps 1 and 7, then restart its deployment.
 
 ```bash
 cd /home/estudiante/mlops-course-repo &&
@@ -382,11 +410,10 @@ Open the Argo CD UI from step 13 and check that `project-3-api` becomes `Synced`
 
 ### Verify autosync and collect evidence
 
-For the autosync demo, change the API Deployment CPU request in `project_3/k8s/api/api.yaml` through a second PR. The HPA uses this request when calculating CPU utilization. After merging, check the revision in Argo CD under **History and Rollback** and verify the rollout on NBAM07.
+After the API is `Synced` and `Healthy`, use a second PR to change `averageUtilization` from `70` to `75` in `project_3/k8s/api/hpa.yaml`. This changes the HPA CPU target and keeps the 1–3 range. After merging, check **History and Rollback** in Argo CD and verify the live target on NBAM07.
 
 ```bash
-kubectl rollout status deployment/property-api -n project-3 --timeout=10m
-kubectl get deployment property-api -n project-3 -o jsonpath='{.spec.template.spec.containers[0].resources.requests.cpu}{"\n"}'
+kubectl -n project-3 get hpa property-api
 ```
 
 Run these checks after the first model is promoted. Use Jupyter notebook 09 for PostgreSQL evidence.
