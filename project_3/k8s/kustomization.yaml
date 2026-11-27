@@ -6,6 +6,4 @@ resources:
   - minio/minio.yaml
   - mlflow/postgres.yaml
   - mlflow/mlflow.yaml
-  - jupyter/jupyter.yaml
   - monitoring/monitoring.yaml
-  - locust/locust.yaml
